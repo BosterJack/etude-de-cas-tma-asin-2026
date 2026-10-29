@@ -10,11 +10,10 @@ Changements par rapport au déroulement d'origine (dossier technique, étapes 1 
 - index uniques en base en filet de sécurité (schema.sql) ;
 - règles d'âge et de clôture corrigées (regles.py, INC-204 et INC-205).
 
-Équivalent PostgreSQL (production) : `SELECT … FROM centres WHERE id = $1 FOR UPDATE`
-(capacité et numéro) et `pg_advisory_xact_lock(npi)` (doublon et même jour), dans
-la même transaction, avec les mêmes index uniques.
+Le verrouillage dépend de la base (voir depot.Connexion.verrouiller_pour_inscription) :
+BEGIN IMMEDIATE avec SQLite ; avec PostgreSQL, `SELECT … FOR UPDATE` sur le centre et
+`pg_advisory_xact_lock` sur le NPI.
 """
-import sqlite3
 from datetime import date, datetime, timezone
 
 from . import client_identite, depot, regles
@@ -48,16 +47,17 @@ def _lire_demande(demande):
     return npi, naissance
 
 
-def inscrire(chemin_db, demande, identite, maintenant=None):
+def inscrire(base, demande, identite, maintenant=None):
     """Enregistre une inscription et retourne son résumé ; lève Refus sinon.
 
+    `base` : depot.BaseSQLite ou depot.BasePostgres.
     `identite` : un ClientIdentite (injecté pour les tests).
     `maintenant` : instant avec fuseau (injecté pour les tests), par défaut l'heure UTC.
     """
     maintenant = maintenant or datetime.now(timezone.utc)
     npi, naissance = _lire_demande(demande)
 
-    cnx = depot.connexion(chemin_db)
+    cnx = base.connexion()
     try:
         concours = depot.concours_par_code(cnx, demande.get("concours"))
         centre = depot.centre_par_code(cnx, demande.get("centre"))
@@ -69,7 +69,7 @@ def inscrire(chemin_db, demande, identite, maintenant=None):
         # Étapes 2 et 3
         if regles.inscriptions_closes(regles.instant_utc(concours["cloture"]), maintenant):
             raise Refus(409, "Inscriptions closes pour ce concours.")
-        if not regles.age_valide(naissance, date.fromisoformat(concours["date_epreuve"])):
+        if not regles.age_valide(naissance, regles.en_date(concours["date_epreuve"])):
             raise Refus(409, "Âge limite dépassé : 35 ans au 31 décembre de l'année du concours.")
 
         # Pré-contrôle sans verrou : évite un appel d'identité inutile. Refait sous verrou plus bas.
@@ -82,8 +82,8 @@ def inscrire(chemin_db, demande, identite, maintenant=None):
             raise Refus(409, "NPI inconnu du service d'identification.")
         statut = depot.STATUT_VALIDEE if etat == client_identite.CONNU else depot.STATUT_EN_ATTENTE
 
-        # Étapes 4, 5, 6 et 8 dans une transaction exclusive
-        cnx.execute("BEGIN IMMEDIATE")
+        # Étapes 4, 5, 6 et 8 dans une transaction, sous verrou
+        cnx.verrouiller_pour_inscription(centre["id"], npi)
         try:
             _verifier_doublons(cnx, npi, concours)
             _verifier_capacite(cnx, centre)
@@ -95,7 +95,7 @@ def inscrire(chemin_db, demande, identite, maintenant=None):
                 cnx, concours["id"], centre["id"], npi, numero, statut, maintenant
             )
             cnx.execute("COMMIT")
-        except sqlite3.IntegrityError:
+        except base.ErreurIntegrite:
             cnx.execute("ROLLBACK")
             # N'arrive que si un autre programme écrit sans verrou : la base a refusé le doublon.
             raise Refus(409, "Inscription en conflit avec une inscription existante.")
@@ -109,8 +109,8 @@ def inscrire(chemin_db, demande, identite, maintenant=None):
         cnx.close()
 
 
-def lister_inscrits(chemin_db, code_centre, code_concours):
-    cnx = depot.connexion(chemin_db)
+def lister_inscrits(base, code_centre, code_concours):
+    cnx = base.connexion()
     try:
         return [dict(r) for r in depot.inscrits_du_centre(cnx, code_centre, code_concours)]
     finally:

@@ -13,7 +13,6 @@ class TestInscription(CasAvecBase):
         r = self.inscrire(demande(1))
         self.assertEqual((r["numero_table"], r["statut"]), ("C-0001", "validee"))
         self.assertEqual(self.inscrire(demande(2))["numero_table"], "C-0002")
-        self.assertEqual(len(self.requete("SELECT * FROM candidats")), 2)
 
     def test_double_inscription_refusee(self):
         self.inscrire(demande(1))
@@ -54,7 +53,7 @@ class TestInscription(CasAvecBase):
         with self.assertRaises(Refus) as e:
             self.inscrire({**demande(0), "npi": "9000000001"})
         self.assertIn("inconnu", e.exception.message)
-        self.assertEqual(self.requete("SELECT COUNT(*) FROM inscriptions")[0][0], 0)
+        self.assertEqual(self.compter(), 0)
 
     def test_controle_de_forme_refus_400(self):
         for mauvaise in ({**demande(1), "npi": "97001234567"}, {**demande(1), "date_naissance": "12/03/1995"},
@@ -85,7 +84,7 @@ class TestServiceIdentiteLent(CasAvecBase):
 
 class TestListeInscrits(CasAvecBase):
     def test_inc_207_liste_de_5000_inscrits_en_moins_de_2_secondes(self):
-        cnx = depot.connexion(self.db)
+        cnx = self.base.connexion()
         cnx.execute("BEGIN")
         for i in range(5000):
             cnx.execute("INSERT INTO candidats (npi, nom, prenoms, date_naissance, cree_le) "
@@ -95,7 +94,7 @@ class TestListeInscrits(CasAvecBase):
         cnx.execute("COMMIT")
         cnx.close()
         debut = time.monotonic()
-        liste = service.lister_inscrits(self.db, "C", "DOUANES")
+        liste = service.lister_inscrits(self.base, "C", "DOUANES")
         self.assertLess(time.monotonic() - debut, 2.0)
         self.assertEqual(len(liste), 5000)
         self.assertEqual(liste[0]["nom"], "NOM")

@@ -8,13 +8,14 @@ Toutes les commandes se lancent depuis la racine du dépôt.
 
 ## Démarrage rapide avec Docker (recommandé)
 
-Seul Docker est nécessaire. PostgreSQL est fourni, chargé avec l'export.
+Seul Docker est nécessaire. PostgreSQL 16 est fourni.
 
 ```bash
-docker compose run --rm tests      # les 38 tests
-docker compose run --rm analyse    # l'analyse du journal
-docker compose run --rm reprise    # le script SQL appliqué DEUX fois à l'export, sur PostgreSQL 16
-docker compose down -v             # tout arrêter ; la base repartira de l'export
+docker compose run --rm tests-postgres   # les 38 tests, correction sur PostgreSQL (comme en production)
+docker compose run --rm tests            # les mêmes tests, correction sur SQLite
+docker compose run --rm analyse          # l'analyse du journal
+docker compose run --rm reprise          # le script SQL appliqué DEUX fois à l'export, sur PostgreSQL
+docker compose down -v                   # tout arrêter ; les bases repartiront de zéro
 ```
 
 Pour la reprise, le second passage doit afficher `INSERT 0 0`, `DELETE 0` et `UPDATE 0`,
@@ -23,8 +24,8 @@ ce qui prouve que le script peut être rejoué. La base reste accessible pour l'
 
 ## Sans Docker
 
-Python 3.8 ou plus suffit : bibliothèque standard uniquement, SQLite inclus. Les
-commandes sont détaillées dans les sections ci-dessous.
+Python 3.8 ou plus suffit : la correction tourne alors sur SQLite, inclus dans
+Python, sans rien installer. Les commandes sont détaillées dans les sections ci-dessous.
 
 ## Lire dans cet ordre
 
@@ -134,10 +135,11 @@ python -m inscriptions.api --db inscriptions.db --identite http://<service-ident
 ├── inscriptions/              correction (étapes 4 à 8 de POST /api/inscriptions)
 │   ├── regles.py              règles métier pures : âge, clôture, NPI
 │   ├── client_identite.py     appel au service d'identification, borné à 5 s
-│   ├── depot.py               accès SQL
+│   ├── depot.py               accès SQL, SQLite ou PostgreSQL
 │   ├── service.py             enregistrement transactionnel d'une inscription
 │   ├── api.py                 API HTTP minimale
-│   └── schema.sql             schéma avec contraintes et index
+│   ├── schema.sql             schéma SQLite avec contraintes et index
+│   └── schema_postgres.sql    le même schéma pour PostgreSQL
 ├── sql/reprise_donnees.sql    reprise des données, rejouable
 ├── tests/                     tests unitaires, de concurrence, de reprise, d'analyse
 ├── docs/                      causes, rapport d'incident, décision Lokossa, sécurité
@@ -152,7 +154,7 @@ python -m inscriptions.api --db inscriptions.db --identite http://<service-ident
   inscriptions ne peuvent plus lire le même maximum de numéro ni le même nombre
   d'inscrits. Les index uniques sont un filet de sécurité si un autre programme écrivait
   sans passer par ce code.
-- **Équivalent PostgreSQL (production).** Dans la même transaction :
+- **Sous PostgreSQL (production, et service Docker `tests-postgres`).** Dans la même transaction :
   `SELECT … FROM centres WHERE id = $1 FOR UPDATE` (capacité et numéro) et
   `pg_advisory_xact_lock(<npi>)` (doublon et même jour), avec les mêmes index uniques.
   Le verrou porte sur le centre, pas sur toute la base : les centres ne se bloquent pas
@@ -162,9 +164,10 @@ python -m inscriptions.api --db inscriptions.db --identite http://<service-ident
   attendu au plus 5 s.
 - **Inscription « en attente de vérification ».** Le numéro de table est attribué et la
   place est comptée. La ligne `candidats` est créée plus tard, à la vérification.
-- **SQLite pour la correction.** Le sujet laisse le choix de la base ; SQLite rend tests et
-  démonstration exécutables sans rien installer. Le script de reprise vise PostgreSQL et
-  reste compatible SQLite, ce qui permet de le tester sur l'export.
+- **Deux bases pour la correction.** PostgreSQL, comme en production (via Docker), et
+  SQLite, pour tout exécuter sans rien installer. Le service ne voit qu'une `Connexion`
+  commune (`inscriptions/depot.py`) ; seule la façon de verrouiller diffère. Les mêmes
+  38 tests passent sur les deux bases.
 - **Limites connues.** Le traitement de reprise des inscriptions « en attente » et la
   convocation lue depuis `candidats` sont décrits, mais pas codés : je les ai jugés moins
   prioritaires dans le temps imparti.

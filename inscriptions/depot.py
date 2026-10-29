@@ -1,4 +1,9 @@
-"""Accès à la base (SQLite) : connexion, schéma et requêtes."""
+"""Accès à la base : SQLite (sans installation) ou PostgreSQL (comme en production).
+
+Le service ne voit qu'une `Connexion`, avec les mêmes requêtes pour les deux bases.
+Seule différence de fond : la façon de verrouiller pendant une inscription
+(`verrouiller_pour_inscription`).
+"""
 import sqlite3
 from datetime import timezone
 from pathlib import Path
@@ -6,26 +11,101 @@ from pathlib import Path
 STATUT_VALIDEE = "validee"
 STATUT_EN_ATTENTE = "en_attente_verification"
 
-SCHEMA = Path(__file__).with_name("schema.sql")
+DOSSIER = Path(__file__).parent
 
 
-def connexion(chemin_db):
-    # isolation_level=None : les transactions sont pilotées explicitement (BEGIN IMMEDIATE).
-    cnx = sqlite3.connect(chemin_db, timeout=30, isolation_level=None, check_same_thread=False)
-    cnx.row_factory = sqlite3.Row
-    cnx.execute("PRAGMA foreign_keys = ON")
-    cnx.execute("PRAGMA busy_timeout = 30000")
-    return cnx
+class Connexion:
+    """Connexion commune aux deux bases. Les requêtes s'écrivent avec des « ? »."""
+
+    def __init__(self, brute, postgres):
+        self.brute = brute
+        self.postgres = postgres
+
+    def execute(self, sql, parametres=()):
+        if self.postgres:
+            sql = sql.replace("?", "%s")  # psycopg attend %s
+        return self.brute.execute(sql, parametres)
+
+    def executer_script(self, sql):
+        if self.postgres:
+            self.brute.execute(sql)
+        else:
+            self.brute.executescript(sql)
+
+    def verrouiller_pour_inscription(self, centre_id, npi):
+        """Ouvre la transaction d'inscription et prend les verrous nécessaires.
+
+        SQLite : BEGIN IMMEDIATE prend tout de suite le verrou d'écriture de la base.
+        PostgreSQL : on verrouille la ligne du centre (capacité et numéro de table) et
+        le NPI (doublon et concours du même jour). Les autres centres restent libres.
+        """
+        if self.postgres:
+            self.execute("BEGIN")
+            self.execute("SELECT id FROM centres WHERE id = ? FOR UPDATE", (centre_id,))
+            self.execute("SELECT pg_advisory_xact_lock(hashtext(?))", (npi,))
+        else:
+            self.execute("BEGIN IMMEDIATE")
+
+    def close(self):
+        self.brute.close()
 
 
-def initialiser(chemin_db):
-    cnx = connexion(chemin_db)
-    try:
-        cnx.execute("PRAGMA journal_mode = WAL")  # lectures non bloquées par les écritures
-        cnx.executescript(SCHEMA.read_text(encoding="utf-8"))
-    finally:
-        cnx.close()
+class BaseSQLite:
+    def __init__(self, chemin):
+        self.chemin = chemin
+        self.ErreurIntegrite = sqlite3.IntegrityError
 
+    def connexion(self):
+        # isolation_level=None : les transactions sont ouvertes explicitement.
+        brute = sqlite3.connect(self.chemin, timeout=30, isolation_level=None, check_same_thread=False)
+        brute.row_factory = sqlite3.Row
+        brute.execute("PRAGMA foreign_keys = ON")
+        brute.execute("PRAGMA busy_timeout = 30000")
+        return Connexion(brute, postgres=False)
+
+    def initialiser(self):
+        cnx = self.connexion()
+        try:
+            cnx.execute("PRAGMA journal_mode = WAL")  # les lectures ne sont pas bloquées par les écritures
+            cnx.executer_script((DOSSIER / "schema.sql").read_text(encoding="utf-8"))
+        finally:
+            cnx.close()
+
+
+class BasePostgres:
+    def __init__(self, url):
+        import psycopg  # pyright: ignore[reportMissingImports]  (installé dans l'image Docker)
+
+        self.url = url
+        self.psycopg = psycopg
+        self.ErreurIntegrite = psycopg.IntegrityError
+
+    def connexion(self):
+        from psycopg.rows import dict_row  # pyright: ignore[reportMissingImports]
+
+        # autocommit : chaque lecture hors transaction est autonome ; les transactions
+        # sont ouvertes explicitement par verrouiller_pour_inscription.
+        brute = self.psycopg.connect(self.url, autocommit=True, row_factory=dict_row)
+        return Connexion(brute, postgres=True)
+
+    def initialiser(self):
+        cnx = self.connexion()
+        try:
+            cnx.executer_script((DOSSIER / "schema_postgres.sql").read_text(encoding="utf-8"))
+        finally:
+            cnx.close()
+
+
+def ouvrir_base(adresse):
+    """« postgresql://… » pour PostgreSQL, sinon un chemin de fichier SQLite."""
+    if adresse.startswith("postgresql://"):
+        return BasePostgres(adresse)
+    return BaseSQLite(adresse)
+
+
+# ---------------------------------------------------------------------------
+# Requêtes
+# ---------------------------------------------------------------------------
 
 def horodatage_utc(instant):
     return instant.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -49,14 +129,15 @@ def inscriptions_conflictuelles(cnx, npi, concours):
 
 
 def nombre_inscrits(cnx, centre_id):
-    return cnx.execute("SELECT COUNT(*) FROM inscriptions WHERE centre_id = ?", (centre_id,)).fetchone()[0]
+    return cnx.execute("SELECT COUNT(*) AS n FROM inscriptions WHERE centre_id = ?", (centre_id,)).fetchone()["n"]
 
 
 def dernier_numero(cnx, centre_id):
     return cnx.execute(
-        "SELECT COALESCE(MAX(CAST(SUBSTR(numero_table, 3) AS INTEGER)), 0) FROM inscriptions WHERE centre_id = ?",
+        """SELECT COALESCE(MAX(CAST(SUBSTR(numero_table, 3) AS INTEGER)), 0) AS n
+           FROM inscriptions WHERE centre_id = ?""",
         (centre_id,),
-    ).fetchone()[0]
+    ).fetchone()["n"]
 
 
 def ajouter_candidat(cnx, npi, identite, naissance, maintenant):
@@ -68,12 +149,11 @@ def ajouter_candidat(cnx, npi, identite, naissance, maintenant):
 
 
 def ajouter_inscription(cnx, concours_id, centre_id, npi, numero, statut, maintenant):
-    cur = cnx.execute(
+    return cnx.execute(
         """INSERT INTO inscriptions (concours_id, centre_id, npi, numero_table, statut, cree_le)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?) RETURNING id""",
         (concours_id, centre_id, npi, numero, statut, horodatage_utc(maintenant)),
-    )
-    return cur.lastrowid
+    ).fetchone()["id"]
 
 
 def inscrits_du_centre(cnx, code_centre, code_concours):

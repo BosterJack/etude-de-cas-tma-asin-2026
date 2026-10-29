@@ -3,7 +3,7 @@
 Références : section « Fonctionnement attendu » du cahier des charges.
 """
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 AGE_MAX = 35
 RE_NPI = re.compile(r"^\d{10}$")
@@ -36,9 +36,19 @@ def age_valide(naissance, date_epreuve):
     return age_au_31_decembre(naissance, date_epreuve.year) <= AGE_MAX
 
 
-def instant_utc(texte):
-    """Instant stocké en base (UTC, sans fuseau) -> datetime UTC avec fuseau."""
-    return datetime.fromisoformat(texte).replace(tzinfo=timezone.utc)
+def instant_utc(valeur):
+    """Instant stocké en base (UTC, sans fuseau) -> datetime UTC avec fuseau.
+
+    SQLite renvoie du texte, PostgreSQL un datetime : on accepte les deux.
+    """
+    if isinstance(valeur, str):
+        valeur = datetime.fromisoformat(valeur)
+    return valeur.replace(tzinfo=timezone.utc)
+
+
+def en_date(valeur):
+    """Date stockée en base : texte avec SQLite, date avec PostgreSQL."""
+    return valeur if isinstance(valeur, date) else date.fromisoformat(valeur)
 
 
 def inscriptions_closes(cloture_utc, maintenant):

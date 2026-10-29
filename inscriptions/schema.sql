@@ -1,4 +1,4 @@
--- Schéma de la version corrigée (SQLite ; syntaxe compatible PostgreSQL).
+-- Schéma de la version corrigée, variante SQLite (voir schema_postgres.sql).
 -- Même structure que l'export, plus les contraintes et index qui manquaient.
 -- Les instants (cloture, cree_le) sont en UTC.
 

@@ -18,7 +18,7 @@ class TestConcurrence(CasAvecBase):
     def setUp(self):
         super().setUp()
         self.faux.delai_s = 0.2
-        self.serveur = api.creer_serveur(self.db, self.identite, horloge=lambda: MAINTENANT)
+        self.serveur = api.creer_serveur(self.base, self.identite, horloge=lambda: MAINTENANT)
         self.url = f"http://127.0.0.1:{self.serveur.server_address[1]}/api/inscriptions"
         threading.Thread(target=self.serveur.serve_forever, daemon=True).start()
 
@@ -54,12 +54,12 @@ class TestConcurrence(CasAvecBase):
         self.assertEqual(len(acceptes), 20)
         self.assertTrue(all("complet" in corps["erreur"] for corps in refuses))
         self.assertEqual(sorted(c["numero_table"] for c in acceptes), [f"L-{n:04d}" for n in range(1, 21)])
-        self.assertEqual(self.requete("SELECT COUNT(*) FROM inscriptions WHERE centre_id = 3")[0][0], 20)
+        self.assertEqual(self.compter("centre_id = 3"), 20)
 
     def test_inc_203_double_clic_une_seule_inscription(self):
         resultats = self.en_parallele([demande(7)] * 15)
         self.assertEqual(sum(1 for code, _ in resultats if code == 201), 1)
-        self.assertEqual(self.requete("SELECT COUNT(*) FROM inscriptions WHERE npi = ?", npi(7))[0][0], 1)
+        self.assertEqual(self.compter("npi = ?", npi(7)), 1)
 
     def test_deux_concours_du_meme_jour_en_meme_temps(self):
         resultats = self.en_parallele([demande(8, "DOUANES"), demande(8, "IMPOTS")] * 5)

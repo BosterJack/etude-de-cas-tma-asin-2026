@@ -1,4 +1,8 @@
-"""Outils communs aux tests : faux service d'identification et base de test."""
+"""Outils communs aux tests : faux service d'identification et base de test.
+
+Par défaut, les tests tournent sur SQLite. Avec BASE_TEST=postgres et PG_URL, ils
+tournent sur PostgreSQL (c'est ce que fait le service `tests-postgres` de Docker).
+"""
 import json
 import os
 import shutil
@@ -55,10 +59,19 @@ class FauxServiceIdentite:
         self.http.server_close()
 
 
-def creer_base(chemin_db, capacite_lokossa=20):
-    depot.initialiser(chemin_db)
-    cnx = depot.connexion(chemin_db)
-    cnx.executescript(f"""
+def creer_base(dossier, capacite_lokossa=20):
+    """Base neuve, avec les 3 concours et 3 centres de test."""
+    if os.environ.get("BASE_TEST") == "postgres":
+        base = depot.BasePostgres(os.environ["PG_URL"])
+        cnx = base.connexion()
+        cnx.executer_script("DROP TABLE IF EXISTS inscriptions, candidats, centres, concours CASCADE")
+        cnx.close()
+    else:
+        base = depot.BaseSQLite(os.path.join(dossier, "test.db"))
+    base.initialiser()
+
+    cnx = base.connexion()
+    cnx.executer_script(f"""
         INSERT INTO concours (id, code, libelle, date_epreuve, cloture) VALUES
           (1, 'DOUANES', 'Douanes', '2026-12-12', '2026-11-30 22:59:00'),
           (2, 'IMPOTS',  'Impôts',  '2026-12-12', '2026-11-30 22:59:00'),
@@ -67,6 +80,7 @@ def creer_base(chemin_db, capacite_lokossa=20):
           (1, 'C', 'Cotonou', 6000), (2, 'P', 'Parakou', 700), (3, 'L', 'Lokossa', {capacite_lokossa});
     """)
     cnx.close()
+    return base
 
 
 def npi(i):
@@ -82,8 +96,7 @@ class CasAvecBase(unittest.TestCase):
 
     def setUp(self):
         self.dossier = tempfile.mkdtemp()
-        self.db = os.path.join(self.dossier, "test.db")
-        creer_base(self.db)
+        self.base = creer_base(self.dossier)
         self.faux = FauxServiceIdentite()
         self.identite = client_identite.ClientIdentite(self.faux.url, delai_s=2.0)
 
@@ -92,11 +105,12 @@ class CasAvecBase(unittest.TestCase):
         shutil.rmtree(self.dossier, ignore_errors=True)
 
     def inscrire(self, d, maintenant=MAINTENANT):
-        return service.inscrire(self.db, d, self.identite, maintenant)
+        return service.inscrire(self.base, d, self.identite, maintenant)
 
-    def requete(self, sql, *params):
-        cnx = depot.connexion(self.db)
+    def compter(self, condition="1 = 1", *params):
+        """Nombre d'inscriptions qui vérifient la condition SQL."""
+        cnx = self.base.connexion()
         try:
-            return cnx.execute(sql, params).fetchall()
+            return cnx.execute(f"SELECT COUNT(*) AS n FROM inscriptions WHERE {condition}", params).fetchone()["n"]
         finally:
             cnx.close()
