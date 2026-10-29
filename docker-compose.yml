@@ -1,0 +1,60 @@
+# Rejouer tout le travail sans rien installer d'autre que Docker :
+#
+#   docker compose run --rm tests      # les 38 tests
+#   docker compose run --rm analyse    # l'analyse du journal
+#   docker compose run --rm reprise    # le script SQL, deux fois, sur PostgreSQL chargé avec l'export
+#   docker compose down -v             # tout arrêter et effacer la base
+#
+# La base PostgreSQL repart de l'export à chaque `down -v` : on peut rejouer la reprise de zéro.
+
+services:
+  # PostgreSQL de production simulé : l'export fourni est chargé au premier démarrage.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: inscriptions
+      POSTGRES_USER: tma
+      POSTGRES_PASSWORD: tma
+    volumes:
+      - ./donnees/base_inscriptions.sql:/docker-entrypoint-initdb.d/01_export.sql:ro
+    ports:
+      - "55432:5432"   # port inhabituel pour ne pas gêner un PostgreSQL déjà installé
+    healthcheck:
+      # -h localhost : on attend le vrai démarrage, pas le serveur temporaire du chargement de l'export
+      test: ["CMD-SHELL", "pg_isready -h localhost -U tma -d inscriptions"]
+      interval: 2s
+      retries: 60
+
+  # Applique le script de reprise deux fois : le second passage ne doit rien changer.
+  reprise:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: tma
+      PGPASSWORD: tma
+      PGDATABASE: inscriptions
+      PGCLIENTENCODING: UTF8
+    volumes:
+      - ./sql:/sql:ro
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        echo "=== 1er passage du script de reprise ==="
+        psql -v ON_ERROR_STOP=1 -f /sql/reprise_donnees.sql
+        echo "=== 2e passage : le script doit pouvoir être rejoué sans rien changer ==="
+        psql -v ON_ERROR_STOP=1 -f /sql/reprise_donnees.sql
+
+  # tests et analyse utilisent la même image, nommée tma-inscriptions.
+  tests:
+    build: .
+    image: tma-inscriptions
+
+  analyse:
+    build: .
+    image: tma-inscriptions
+    command: ["python", "analyse/analyse_journal.py", "donnees/journal_production.log"]

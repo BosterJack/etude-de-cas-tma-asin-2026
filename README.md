@@ -4,8 +4,27 @@ Intervention de tierce maintenance applicative sur la plateforme d'inscription a
 (DOUANES, IMPOTS, TRESOR). Le travail suit cet ordre : prioriser, établir les faits,
 trouver les causes, corriger, réparer les données, rendre compte.
 
-**Prérequis : Python 3.8 ou plus, et rien d'autre** (bibliothèque standard uniquement,
-SQLite inclus). Toutes les commandes se lancent depuis la racine du dépôt.
+Toutes les commandes se lancent depuis la racine du dépôt.
+
+## Démarrage rapide avec Docker (recommandé)
+
+Seul Docker est nécessaire. PostgreSQL est fourni, chargé avec l'export.
+
+```bash
+docker compose run --rm tests      # les 38 tests
+docker compose run --rm analyse    # l'analyse du journal
+docker compose run --rm reprise    # le script SQL appliqué DEUX fois à l'export, sur PostgreSQL 16
+docker compose down -v             # tout arrêter ; la base repartira de l'export
+```
+
+Pour la reprise, le second passage doit afficher `INSERT 0 0`, `DELETE 0` et `UPDATE 0`,
+ce qui prouve que le script peut être rejoué. La base reste accessible pour l'inspecter :
+`localhost:55432`, base `inscriptions`, utilisateur et mot de passe `tma`.
+
+## Sans Docker
+
+Python 3.8 ou plus suffit : bibliothèque standard uniquement, SQLite inclus. Les
+commandes sont détaillées dans les sections ci-dessous.
 
 ## Lire dans cet ordre
 
