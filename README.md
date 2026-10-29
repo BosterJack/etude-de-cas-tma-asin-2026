@@ -24,8 +24,28 @@ ce qui prouve que le script peut être rejoué. La base reste accessible pour l'
 
 ## Sans Docker
 
-Python 3.8 ou plus suffit : la correction tourne alors sur SQLite, inclus dans
-Python, sans rien installer. Les commandes sont détaillées dans les sections ci-dessous.
+Python 3.10 ou plus suffit, sans rien installer : la correction tourne alors sur SQLite,
+inclus dans Python. Il faut une version de SQLite égale ou supérieure à 3.35 (pour
+`RETURNING`) ; c'est le cas des versions de Python 3.10 et suivantes pour Windows et macOS.
+Pour vérifier : `python -c "import sqlite3; print(sqlite3.sqlite_version)"`.
+Les commandes sont détaillées dans les sections ci-dessous.
+
+## Synthèse par incident
+
+| Incident | Verdict | Cause racine | Correction | Preuve |
+|---|---|---|---|---|
+| **INC-206** Plateforme bloquée | Anomalie | Appel d'identité sans délai d'attente (client HTTP par défaut) | `inscriptions/client_identite.py` : 5 s au maximum, sinon « en attente de vérification » ; appel sorti de la transaction | `test_service.py` : `TestServiceIdentiteLent` |
+| **INC-201** Numéro en double | Anomalie | « max + 1 » lu sans verrou, longtemps avant l'écriture | Transaction sous verrou (`service.py`, `depot.py`) et index unique (centre, numéro) | `test_concurrence.py` : 100 inscriptions simultanées |
+| **INC-202** Lokossa 307/300 | Anomalie | Capacité lue sans verrou | Même transaction ; données : `docs/decision-lokossa.md` | `test_concurrence.py` : 60 demandes pour 20 places |
+| **INC-203** Double inscription | Anomalie | Contrôle du doublon sans verrou, pas de contrainte d'unicité | Même transaction et index unique (npi, concours) | `test_concurrence.py` : 15 doubles clics simultanés |
+| **INC-204** Clôture à 22 h 59 | Anomalie | Heure locale du serveur comparée à une valeur UTC | `regles.inscriptions_closes` : comparaison d'instants avec fuseau | `test_regles.py` : `TestCloture` |
+| **INC-205** Refus pour l'âge | Anomalie | Âge = jours / 365, décimal | `regles.age_au_31_decembre` : années révolues | `test_regles.py` : `TestAge` |
+| **INC-207** Liste lente | Anomalie | Une requête par inscrit (N+1), sans index | Une requête avec jointure et index | `test_service.py` : 5 000 inscrits en moins de 2 s |
+| **INC-208** IMPOTS après DOUANES | **Conforme** | Règle du même jour (épreuves le 12/12) | Aucune : réponse au candidat | `test_service.py` : `test_inc_208_…` |
+| Non signalé | Sécurité | Recherche par nom construite par concaténation SQL | Mesures immédiates : `docs/incident-securite-recherche.md` | `test_analyse_journal.py` : détection |
+
+201, 202, 203 et 206 ont **une seule cause** : l'appel d'identité, devenu lent, élargissait
+une fenêtre de concurrence sans verrou ni contrainte. Détail dans `docs/causes-racines.md`.
 
 ## Lire dans cet ordre
 
@@ -67,8 +87,14 @@ Points de méthode :
 ## 2. Lancer les tests
 
 ```bash
-python -m unittest discover -s tests -t . -v
+python -m unittest discover -s tests -t . -v                 # correction sur SQLite
+
+# Correction sur un PostgreSQL déjà installé (base vide dédiée ; pip install "psycopg[binary]")
+BASE_TEST=postgres PG_URL=postgresql://tma:tma@localhost:5432/tests python -m unittest discover -s tests -t . -v
 ```
+
+Attention : sur PostgreSQL, chaque test recrée les tables de la base indiquée. Il faut une
+base vide dédiée aux tests, et `max_connections` d'au moins 150 pour les tests de concurrence.
 
 38 tests, environ 40 s :
 
@@ -123,7 +149,11 @@ trop, 7 sont des doublons et seules 15 sont à renuméroter.
 
 ```bash
 python -m inscriptions.api --db inscriptions.db --identite http://<service-identification> --port 8000
+python -m inscriptions.api --db postgresql://tma:tma@localhost:55432/inscriptions --identite http://<service-identification>
 ```
+
+Routes : `POST /api/inscriptions` (JSON : `npi`, `date_naissance`, `concours`, `centre`) et
+`GET /api/centres/{code}/inscrits?concours=…`.
 
 ## Architecture
 
