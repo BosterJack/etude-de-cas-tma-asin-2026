@@ -1,6 +1,6 @@
 # Rejouer tout le travail sans rien installer d'autre que Docker :
 #
-#   docker compose run --rm tests            # les 38 tests (correction sur SQLite)
+#   docker compose run --rm tests            # les 39 tests (correction sur SQLite)
 #   docker compose run --rm tests-postgres   # les mêmes tests, correction sur PostgreSQL
 #   docker compose run --rm analyse          # l'analyse du journal
 #   docker compose run --rm reprise          # le script SQL, deux fois, sur PostgreSQL chargé avec l'export

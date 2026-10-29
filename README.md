@@ -11,7 +11,7 @@ Toutes les commandes se lancent depuis la racine du dépôt.
 Seul Docker est nécessaire. PostgreSQL 16 est fourni.
 
 ```bash
-docker compose run --rm tests-postgres   # les 38 tests, correction sur PostgreSQL (comme en production)
+docker compose run --rm tests-postgres   # les 39 tests, correction sur PostgreSQL (comme en production)
 docker compose run --rm tests            # les mêmes tests, correction sur SQLite
 docker compose run --rm analyse          # l'analyse du journal
 docker compose run --rm reprise          # le script SQL appliqué DEUX fois à l'export, sur PostgreSQL
@@ -96,7 +96,7 @@ BASE_TEST=postgres PG_URL=postgresql://tma:tma@localhost:5432/tests python -m un
 Attention : sur PostgreSQL, chaque test recrée les tables de la base indiquée. Il faut une
 base vide dédiée aux tests, et `max_connections` d'au moins 150 pour les tests de concurrence.
 
-38 tests, environ 40 s :
+39 tests, environ 40 s :
 
 | Fichier | Ce qu'il vérifie |
 |---|---|
@@ -197,7 +197,7 @@ Routes : `POST /api/inscriptions` (JSON : `npi`, `date_naissance`, `concours`, `
 - **Deux bases pour la correction.** PostgreSQL, comme en production (via Docker), et
   SQLite, pour tout exécuter sans rien installer. Le service ne voit qu'une `Connexion`
   commune (`inscriptions/depot.py`) ; seule la façon de verrouiller diffère. Les mêmes
-  38 tests passent sur les deux bases.
+  39 tests passent sur les deux bases.
 - **Limites connues.** Le traitement de reprise des inscriptions « en attente » et la
   convocation lue depuis `candidats` sont décrits, mais pas codés : je les ai jugés moins
   prioritaires dans le temps imparti.

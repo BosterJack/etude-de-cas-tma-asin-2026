@@ -73,6 +73,17 @@ class TestServiceIdentiteLent(CasAvecBase):
         self.assertEqual(r["statut"], "en_attente_verification")
         self.assertEqual(r["numero_table"], "C-0001")
 
+    def test_inc_206_avec_le_vrai_delai_l_appel_ne_depasse_jamais_5_secondes(self):
+        # Configuration de production : délai par défaut (5 s), service qui met 8 s à répondre.
+        self.faux.delai_s = 8.0
+        self.identite = client_identite.ClientIdentite(self.faux.url)
+        debut = time.monotonic()
+        r = self.inscrire(demande(1))
+        duree = time.monotonic() - debut
+        self.assertEqual(r["statut"], "en_attente_verification")
+        self.assertGreaterEqual(duree, 4.9)  # on a bien attendu le service jusqu'au délai…
+        self.assertLess(duree, 5.5)          # …et pas au-delà (marge pour la base et le réseau local)
+
     def test_service_injoignable_inscription_en_attente(self):
         self.identite = client_identite.ClientIdentite("http://127.0.0.1:1", delai_s=0.5)
         self.assertEqual(self.inscrire(demande(1))["statut"], "en_attente_verification")
