@@ -39,7 +39,7 @@ class FauxServiceIdentite:
                 self.end_headers()
                 self.wfile.write(corps)
 
-            def log_message(self, *args):
+            def log_message(self, format, *args):
                 pass
 
         class Serveur(ServeurHTTP):

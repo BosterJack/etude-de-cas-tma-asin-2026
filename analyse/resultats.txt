@@ -1,162 +1,138 @@
-Journal analysé : donnees/journal_production.log
-Période couverte (heure du Bénin) : 18/11/2026 01:00:14 -> 21/11/2026 07:59:21
-Requêtes : 8221 ; appels au service d'identification : 4556 ; lignes non reconnues : 0
-POST /api/inscriptions : 2464 dont 2007 acceptées (201)
+Journal : donnees/journal_production.log
+8221 requêtes, 4556 appels au service d'identification, 0 lignes non reconnues
+Toutes les heures sont en heure du Bénin (UTC+1).
 
 ==============================================================================
-1. Numéros de table attribués plusieurs fois (INC-201, INC-202)
+1. Numéros de table attribués plusieurs fois (INC-201)
 ==============================================================================
-10 numéros attribués plusieurs fois, soit 22 attributions en trop.
-  C-3305 x3
+10 numéros, 22 attributions en trop.
+  C-3305 attribué 3 fois :
     19/11/2026 09:13:41  npi=2256599771  DOUANES  durée 27.3 s  [req:d2920789]
     19/11/2026 09:14:18  npi=2256599771  DOUANES  durée 51.0 s  [req:bf13f780]
     19/11/2026 09:14:25  npi=2441813747  DOUANES  durée 50.4 s  [req:0afbdf2e]
-  C-3306 x3
+  C-3306 attribué 3 fois :
     19/11/2026 09:17:34  npi=3662092338  DOUANES  durée 37.8 s  [req:14f41bdc]
-    19/11/2026 09:17:39  npi=8869803777  IMPOTS   durée 25.8 s  [req:65822124]
-    19/11/2026 09:18:07  npi=8869803777  IMPOTS   durée 44.2 s  [req:0b937620]
-  C-3308 x3
-    19/11/2026 09:22:11  npi=6995152664  TRESOR   durée 41.8 s  [req:b613990d]
-    19/11/2026 09:22:22  npi=7586455716  IMPOTS   durée 57.6 s  [req:f8d71ec4]
-    19/11/2026 09:22:37  npi=7586455716  IMPOTS   durée 59.2 s  [req:26a79251]
-  C-3309 x2
-    19/11/2026 09:25:47  npi=0751839491  TRESOR   durée 44.6 s  [req:e8d7f8fc]
-    19/11/2026 09:25:51  npi=0751839491  TRESOR   durée 40.4 s  [req:88f4d0f6]
-  C-3311 x3
-    19/11/2026 09:29:54  npi=9166289394  TRESOR   durée 40.0 s  [req:2002e70f]
-    19/11/2026 09:29:55  npi=9166289394  TRESOR   durée 47.3 s  [req:5a18a15e]
+    19/11/2026 09:17:39  npi=8869803777  IMPOTS  durée 25.8 s  [req:65822124]
+    19/11/2026 09:18:07  npi=8869803777  IMPOTS  durée 44.2 s  [req:0b937620]
+  C-3308 attribué 3 fois :
+    19/11/2026 09:22:11  npi=6995152664  TRESOR  durée 41.8 s  [req:b613990d]
+    19/11/2026 09:22:22  npi=7586455716  IMPOTS  durée 57.6 s  [req:f8d71ec4]
+    19/11/2026 09:22:37  npi=7586455716  IMPOTS  durée 59.2 s  [req:26a79251]
+  C-3309 attribué 2 fois :
+    19/11/2026 09:25:47  npi=0751839491  TRESOR  durée 44.6 s  [req:e8d7f8fc]
+    19/11/2026 09:25:51  npi=0751839491  TRESOR  durée 40.4 s  [req:88f4d0f6]
+  C-3311 attribué 3 fois :
+    19/11/2026 09:29:54  npi=9166289394  TRESOR  durée 40.0 s  [req:2002e70f]
+    19/11/2026 09:29:55  npi=9166289394  TRESOR  durée 47.3 s  [req:5a18a15e]
     19/11/2026 09:30:02  npi=8140210333  DOUANES  durée 19.0 s  [req:63cbaf83]
-  C-3313 x3
+  C-3313 attribué 3 fois :
     19/11/2026 09:33:38  npi=7586673329  DOUANES  durée 18.3 s  [req:259f9c08]
     19/11/2026 09:34:07  npi=7586673329  DOUANES  durée 33.7 s  [req:cf075d17]
     19/11/2026 09:34:13  npi=8995952471  DOUANES  durée 40.3 s  [req:3dc725d8]
-  L-0297 x5
-    19/11/2026 09:11:23  npi=8496397796  IMPOTS   durée 21.8 s  [req:aaf0f8db]
-    19/11/2026 09:11:28  npi=1230531326  IMPOTS   durée 20.3 s  [req:29c31296]
-    19/11/2026 09:11:37  npi=5849598968  IMPOTS   durée 26.7 s  [req:fd92dc93]
-    19/11/2026 09:11:54  npi=7390181652  IMPOTS   durée 37.8 s  [req:036e0cc8]
-    19/11/2026 09:12:24  npi=5764074760  IMPOTS   durée 61.7 s  [req:f4cf0482]
-  L-0298 x6
-    19/11/2026 09:11:52  npi=7626262999  IMPOTS   durée 19.9 s  [req:ca41610c]
-    19/11/2026 09:12:14  npi=6926583899  IMPOTS   durée 47.6 s  [req:160e4365]
-    19/11/2026 09:12:20  npi=0804931531  IMPOTS   durée 37.4 s  [req:fd3154d6]
-    19/11/2026 09:12:35  npi=5004565733  IMPOTS   durée 47.7 s  [req:0af7789b]
-    19/11/2026 09:12:37  npi=7237864540  IMPOTS   durée 61.5 s  [req:5239eb06]
-    19/11/2026 09:12:43  npi=1168848367  IMPOTS   durée 52.3 s  [req:baaa5823]
-  N-0574 x2
-    18/11/2026 16:42:07  npi=2937739971  DOUANES  durée 258 ms  [req:da7305cf]
-    18/11/2026 16:42:07  npi=2937739971  DOUANES  durée 279 ms  [req:cd15b304]
-  P-0464 x2
+  L-0297 attribué 5 fois :
+    19/11/2026 09:11:23  npi=8496397796  IMPOTS  durée 21.8 s  [req:aaf0f8db]
+    19/11/2026 09:11:28  npi=1230531326  IMPOTS  durée 20.3 s  [req:29c31296]
+    19/11/2026 09:11:37  npi=5849598968  IMPOTS  durée 26.7 s  [req:fd92dc93]
+    19/11/2026 09:11:54  npi=7390181652  IMPOTS  durée 37.8 s  [req:036e0cc8]
+    19/11/2026 09:12:24  npi=5764074760  IMPOTS  durée 61.7 s  [req:f4cf0482]
+  L-0298 attribué 6 fois :
+    19/11/2026 09:11:52  npi=7626262999  IMPOTS  durée 19.9 s  [req:ca41610c]
+    19/11/2026 09:12:14  npi=6926583899  IMPOTS  durée 47.6 s  [req:160e4365]
+    19/11/2026 09:12:20  npi=0804931531  IMPOTS  durée 37.4 s  [req:fd3154d6]
+    19/11/2026 09:12:35  npi=5004565733  IMPOTS  durée 47.7 s  [req:0af7789b]
+    19/11/2026 09:12:37  npi=7237864540  IMPOTS  durée 61.5 s  [req:5239eb06]
+    19/11/2026 09:12:43  npi=1168848367  IMPOTS  durée 52.3 s  [req:baaa5823]
+  N-0574 attribué 2 fois :
+    18/11/2026 16:42:07  npi=2937739971  DOUANES  durée 0.3 s  [req:da7305cf]
+    18/11/2026 16:42:07  npi=2937739971  DOUANES  durée 0.3 s  [req:cd15b304]
+  P-0464 attribué 2 fois :
     19/11/2026 09:21:39  npi=3076016910  DOUANES  durée 22.8 s  [req:a061413f]
     19/11/2026 09:21:47  npi=7984581920  DOUANES  durée 33.4 s  [req:a93cfec6]
 
 ==============================================================================
-2. Inscriptions en double (même NPI, même concours) (INC-203)
+2. Inscriptions en double (INC-203)
 ==============================================================================
-7 candidats inscrits plusieurs fois au même concours, soit 7 inscriptions en trop.
-  npi=0751839491 TRESOR : C-3309, C-3309  (2e envoi 8 s après le 1er)
-    19/11/2026 09:25:47  C-3309  durée 44.6 s  ip=41.138.88.11  [req:e8d7f8fc]
-    19/11/2026 09:25:51  C-3309  durée 40.4 s  ip=41.138.88.11  [req:88f4d0f6]
-  npi=2256599771 DOUANES : C-3305, C-3305  (2e envoi 12 s après le 1er)
-    19/11/2026 09:13:41  C-3305  durée 27.3 s  ip=41.138.81.11  [req:d2920789]
-    19/11/2026 09:14:18  C-3305  durée 51.0 s  ip=41.138.81.11  [req:bf13f780]
-  npi=2937739971 DOUANES : N-0574, N-0574  (2e envoi 0 s après le 1er)
-    18/11/2026 16:42:07  N-0574  durée 258 ms  ip=41.138.94.37  [req:da7305cf]
-    18/11/2026 16:42:07  N-0574  durée 279 ms  ip=41.138.94.37  [req:cd15b304]
-  npi=7586455716 IMPOTS : C-3308, C-3308  (2e envoi 13 s après le 1er)
-    19/11/2026 09:22:22  C-3308  durée 57.6 s  ip=41.138.87.11  [req:f8d71ec4]
-    19/11/2026 09:22:37  C-3308  durée 59.2 s  ip=41.138.87.11  [req:26a79251]
-  npi=7586673329 DOUANES : C-3313, C-3313  (2e envoi 13 s après le 1er)
-    19/11/2026 09:33:38  C-3313  durée 18.3 s  ip=197.234.205.48  [req:259f9c08]
-    19/11/2026 09:34:07  C-3313  durée 33.7 s  ip=197.234.205.48  [req:cf075d17]
-  npi=8869803777 IMPOTS : C-3306, C-3306  (2e envoi 9 s après le 1er)
-    19/11/2026 09:17:39  C-3306  durée 25.8 s  ip=105.235.11.7  [req:65822124]
-    19/11/2026 09:18:07  C-3306  durée 44.2 s  ip=105.235.11.7  [req:0b937620]
-  npi=9166289394 TRESOR : C-3311, C-3311  (2e envoi 6 s après le 1er)
-    19/11/2026 09:29:55  C-3311  durée 47.3 s  ip=105.235.11.66  [req:5a18a15e]
-    19/11/2026 09:29:54  C-3311  durée 40.0 s  ip=105.235.11.66  [req:2002e70f]
-Inscrits à deux concours du même jour malgré la règle : 0
+7 candidats inscrits deux fois au même concours.
+  npi=0751839491  TRESOR  C-3309  1er envoi 19/11/2026 09:25:02, 2e envoi 8 s après  ip=41.138.88.11
+  npi=2256599771  DOUANES  C-3305  1er envoi 19/11/2026 09:13:14, 2e envoi 12 s après  ip=41.138.81.11
+  npi=2937739971  DOUANES  N-0574  1er envoi 18/11/2026 16:42:07, 2e envoi 0 s après  ip=41.138.94.37
+  npi=7586455716  IMPOTS  C-3308  1er envoi 19/11/2026 09:21:25, 2e envoi 13 s après  ip=41.138.87.11
+  npi=7586673329  DOUANES  C-3313  1er envoi 19/11/2026 09:33:19, 2e envoi 13 s après  ip=197.234.205.48
+  npi=8869803777  IMPOTS  C-3306  1er envoi 19/11/2026 09:17:14, 2e envoi 9 s après  ip=105.235.11.7
+  npi=9166289394  TRESOR  C-3311  1er envoi 19/11/2026 09:29:08, 2e envoi 6 s après  ip=105.235.11.66
 
 ==============================================================================
-3. Service d'identification >= 5 s (INC-206)
+3. Service d'identification à 5 s ou plus (INC-206)
 ==============================================================================
-Période : du 19/11/2026 09:09:48 au 19/11/2026 09:39:49 (durée 0:30:01)
-Appels lents : 60 (moyenne 38.1 s, max 61.7 s)
+Du 19/11/2026 09:09:48 au 19/11/2026 09:39:49
 Requêtes touchées : 60
-    41  POST /api/inscriptions
-    19  GET /api/inscriptions/{id}/convocation
-Requêtes de 5 s ou plus toutes routes confondues dans la période : 60
-Inscriptions enregistrées pendant la période : 41 (dont numéros en double : 30)
+  dont inscriptions : 41
+  dont convocations : 19
+Durée des appels lents : moyenne 38.1 s, max 61.7 s
 
 ==============================================================================
-4. Refus à tort pour clôture (INC-204)
+4. Refus à tort le soir de la clôture du Trésor (INC-204)
 ==============================================================================
-TRESOR (clôture réelle 20/11/2026 23:59:00) : 147 refus à tort, 100 candidats distincts
-  premier : 20/11/2026 22:59:05, dernier : 20/11/2026 23:58:58
-  dont 6 candidats déjà inscrits plus tôt (simple nouvel envoi, sans préjudice)
-  => 94 candidats privés d'inscription (141 refus)
-Refus « clos » légitimes (après la clôture réelle) : 80
+147 refus à tort, pour 100 candidats.
+Du 20/11/2026 22:59:05 au 20/11/2026 23:58:58 (clôture réelle : 20/11/2026 23:59:00)
+Candidats privés d'inscription (hors ceux déjà inscrits plus tôt) : 94
 
 ==============================================================================
-5. Refus à tort pour l'âge (INC-205)
+5. Candidats refusés à tort pour l'âge (INC-205)
 ==============================================================================
-36 refus à tort, 36 candidats distincts (âge réel <= 35 ans au 31/12, mais jours/365 > 35).
-  18/11/2026 09:14:06  npi=6436029760  né le 21/06/1991  TRESOR  âge 35 ans (calcul bugué 35.553)  inscrit ensuite : non
-  18/11/2026 10:36:08  npi=7320499647  né le 05/05/1991  DOUANES âge 35 ans (calcul bugué 35.682)  inscrit ensuite : non
-  18/11/2026 11:39:50  npi=4727057473  né le 31/07/1991  DOUANES âge 35 ans (calcul bugué 35.444)  inscrit ensuite : non
-  18/11/2026 11:55:25  npi=2628467526  né le 19/03/1991  DOUANES âge 35 ans (calcul bugué 35.811)  inscrit ensuite : non
-  18/11/2026 15:37:09  npi=0806727913  né le 04/09/1991  DOUANES âge 35 ans (calcul bugué 35.348)  inscrit ensuite : non
-  18/11/2026 16:02:09  npi=1258130683  né le 19/05/1991  IMPOTS  âge 35 ans (calcul bugué 35.644)  inscrit ensuite : non
-  18/11/2026 18:27:30  npi=0957763594  né le 17/10/1991  DOUANES âge 35 ans (calcul bugué 35.230)  inscrit ensuite : non
-  18/11/2026 22:38:05  npi=3667644572  né le 05/12/1991  IMPOTS  âge 35 ans (calcul bugué 35.096)  inscrit ensuite : non
-  18/11/2026 23:10:40  npi=0464834517  né le 15/09/1991  DOUANES âge 35 ans (calcul bugué 35.318)  inscrit ensuite : non
-  19/11/2026 08:36:05  npi=8964890267  né le 11/10/1991  TRESOR  âge 35 ans (calcul bugué 35.247)  inscrit ensuite : non
-  19/11/2026 08:46:21  npi=7586518899  né le 22/02/1991  DOUANES âge 35 ans (calcul bugué 35.879)  inscrit ensuite : non
-  19/11/2026 10:32:57  npi=2693117714  né le 18/07/1991  DOUANES âge 35 ans (calcul bugué 35.479)  inscrit ensuite : non
-  19/11/2026 10:33:40  npi=5022770477  né le 01/07/1991  IMPOTS  âge 35 ans (calcul bugué 35.526)  inscrit ensuite : non
-  19/11/2026 13:26:10  npi=0264663515  né le 16/11/1991  IMPOTS  âge 35 ans (calcul bugué 35.148)  inscrit ensuite : non
-  19/11/2026 14:22:28  npi=3490662947  né le 20/07/1991  IMPOTS  âge 35 ans (calcul bugué 35.474)  inscrit ensuite : non
-  19/11/2026 14:22:41  npi=9269739419  né le 20/06/1991  TRESOR  âge 35 ans (calcul bugué 35.556)  inscrit ensuite : non
-  19/11/2026 15:33:36  npi=2702047634  né le 13/01/1991  IMPOTS  âge 35 ans (calcul bugué 35.989)  inscrit ensuite : non
-  19/11/2026 15:54:29  npi=9009482260  né le 18/01/1991  IMPOTS  âge 35 ans (calcul bugué 35.975)  inscrit ensuite : non
-  19/11/2026 16:51:27  npi=0559252584  né le 03/11/1991  DOUANES âge 35 ans (calcul bugué 35.184)  inscrit ensuite : non
-  19/11/2026 17:15:19  npi=4855293158  né le 24/10/1991  DOUANES âge 35 ans (calcul bugué 35.211)  inscrit ensuite : non
-  19/11/2026 17:37:22  npi=4642963410  né le 06/01/1991  IMPOTS  âge 35 ans (calcul bugué 36.008)  inscrit ensuite : non
-  19/11/2026 18:17:35  npi=1792802135  né le 04/11/1991  DOUANES âge 35 ans (calcul bugué 35.181)  inscrit ensuite : non
-  19/11/2026 20:51:15  npi=6049789498  né le 19/04/1991  IMPOTS  âge 35 ans (calcul bugué 35.726)  inscrit ensuite : non
-  19/11/2026 22:38:52  npi=9494859021  né le 13/09/1991  IMPOTS  âge 35 ans (calcul bugué 35.323)  inscrit ensuite : non
-  19/11/2026 23:28:35  npi=1026542954  né le 01/01/1992  DOUANES âge 34 ans (calcul bugué 35.022)  inscrit ensuite : non
-  19/11/2026 23:52:51  npi=3978631043  né le 26/08/1991  IMPOTS  âge 35 ans (calcul bugué 35.373)  inscrit ensuite : non
-  20/11/2026 07:14:40  npi=4257684522  né le 06/02/1991  IMPOTS  âge 35 ans (calcul bugué 35.923)  inscrit ensuite : non
-  20/11/2026 12:21:53  npi=9640606668  né le 19/01/1991  DOUANES âge 35 ans (calcul bugué 35.973)  inscrit ensuite : non
-  20/11/2026 14:38:32  npi=9349594980  né le 19/11/1991  TRESOR  âge 35 ans (calcul bugué 35.140)  inscrit ensuite : non
-  20/11/2026 15:59:08  npi=6852756623  né le 09/07/1991  DOUANES âge 35 ans (calcul bugué 35.504)  inscrit ensuite : non
-  20/11/2026 16:09:52  npi=3469731590  né le 08/01/1992  DOUANES âge 34 ans (calcul bugué 35.003)  inscrit ensuite : non
-  20/11/2026 16:17:53  npi=2102034838  né le 17/08/1991  DOUANES âge 35 ans (calcul bugué 35.397)  inscrit ensuite : non
-  20/11/2026 17:29:17  npi=2657416857  né le 20/03/1991  DOUANES âge 35 ans (calcul bugué 35.808)  inscrit ensuite : non
-  20/11/2026 19:09:00  npi=8118405198  né le 14/05/1991  DOUANES âge 35 ans (calcul bugué 35.658)  inscrit ensuite : non
-  20/11/2026 21:04:51  npi=6688436987  né le 07/06/1991  DOUANES âge 35 ans (calcul bugué 35.592)  inscrit ensuite : non
-  20/11/2026 22:15:42  npi=2174068307  né le 09/12/1991  DOUANES âge 35 ans (calcul bugué 35.085)  inscrit ensuite : non
+36 candidats (35 ans au plus au 31/12, refusés par le calcul jours / 365).
+  18/11/2026 09:14:06  npi=6436029760  né le 1991-06-21  TRESOR
+  18/11/2026 10:36:08  npi=7320499647  né le 1991-05-05  DOUANES
+  18/11/2026 11:39:50  npi=4727057473  né le 1991-07-31  DOUANES
+  18/11/2026 11:55:25  npi=2628467526  né le 1991-03-19  DOUANES
+  18/11/2026 15:37:09  npi=0806727913  né le 1991-09-04  DOUANES
+  18/11/2026 16:02:09  npi=1258130683  né le 1991-05-19  IMPOTS
+  18/11/2026 18:27:30  npi=0957763594  né le 1991-10-17  DOUANES
+  18/11/2026 22:38:05  npi=3667644572  né le 1991-12-05  IMPOTS
+  18/11/2026 23:10:40  npi=0464834517  né le 1991-09-15  DOUANES
+  19/11/2026 08:36:05  npi=8964890267  né le 1991-10-11  TRESOR
+  19/11/2026 08:46:21  npi=7586518899  né le 1991-02-22  DOUANES
+  19/11/2026 10:32:57  npi=2693117714  né le 1991-07-18  DOUANES
+  19/11/2026 10:33:40  npi=5022770477  né le 1991-07-01  IMPOTS
+  19/11/2026 13:26:10  npi=0264663515  né le 1991-11-16  IMPOTS
+  19/11/2026 14:22:28  npi=3490662947  né le 1991-07-20  IMPOTS
+  19/11/2026 14:22:41  npi=9269739419  né le 1991-06-20  TRESOR
+  19/11/2026 15:33:36  npi=2702047634  né le 1991-01-13  IMPOTS
+  19/11/2026 15:54:29  npi=9009482260  né le 1991-01-18  IMPOTS
+  19/11/2026 16:51:27  npi=0559252584  né le 1991-11-03  DOUANES
+  19/11/2026 17:15:19  npi=4855293158  né le 1991-10-24  DOUANES
+  19/11/2026 17:37:22  npi=4642963410  né le 1991-01-06  IMPOTS
+  19/11/2026 18:17:35  npi=1792802135  né le 1991-11-04  DOUANES
+  19/11/2026 20:51:15  npi=6049789498  né le 1991-04-19  IMPOTS
+  19/11/2026 22:38:52  npi=9494859021  né le 1991-09-13  IMPOTS
+  19/11/2026 23:28:35  npi=1026542954  né le 1992-01-01  DOUANES
+  19/11/2026 23:52:51  npi=3978631043  né le 1991-08-26  IMPOTS
+  20/11/2026 07:14:40  npi=4257684522  né le 1991-02-06  IMPOTS
+  20/11/2026 12:21:53  npi=9640606668  né le 1991-01-19  DOUANES
+  20/11/2026 14:38:32  npi=9349594980  né le 1991-11-19  TRESOR
+  20/11/2026 15:59:08  npi=6852756623  né le 1991-07-09  DOUANES
+  20/11/2026 16:09:52  npi=3469731590  né le 1992-01-08  DOUANES
+  20/11/2026 16:17:53  npi=2102034838  né le 1991-08-17  DOUANES
+  20/11/2026 17:29:17  npi=2657416857  né le 1991-03-20  DOUANES
+  20/11/2026 19:09:00  npi=8118405198  né le 1991-05-14  DOUANES
+  20/11/2026 21:04:51  npi=6688436987  né le 1991-06-07  DOUANES
+  20/11/2026 22:15:42  npi=2174068307  né le 1991-12-09  DOUANES
 
 ==============================================================================
 6. Liste des inscrits par centre (INC-207)
 ==============================================================================
-Centre  appels   moyenne       max  max lignes  ms/ligne
-A            8     2.8 s     5.1 s         262      18.8
-C           18    25.4 s    46.5 s        2408      18.6
-L            7     1.3 s     3.7 s         195      18.4
-N            8     4.4 s     7.9 s         408      19.2
-P           10     4.4 s     6.6 s         336      18.5
-La durée croît avec le nombre de lignes : une requête par inscrit (N+1), sans index.
+Centre    Appels   Moyenne   Maximum  Lignes max
+A              8     2.8 s     5.1 s         262
+C             18    25.4 s    46.5 s        2408
+L              7     1.3 s     3.7 s         195
+N              8     4.4 s     7.9 s         408
+P             10     4.4 s     6.6 s         336
 
 ==============================================================================
-Bonus : recherches suspectes (/api/inscrits/recherche)
+Bonus : recherches suspectes
 ==============================================================================
-4 requêtes suspectes depuis 102.64.217.33. Activité complète de ces IP :
-  20/11/2026 04:12:40  ip=102.64.217.33  GET statut=200  lignes=390  'KPADONOU'
-  20/11/2026 04:13:05  ip=102.64.217.33  GET statut=500  lignes=-  "'"
-      erreur : SQLSTATE[42601]: Syntax error: 7 ERROR:  unterminated quoted string at or near "'%' LIMIT 50"
-  20/11/2026 04:13:27  ip=102.64.217.33  GET statut=200  lignes=50  "' OR '1'='1"
-  20/11/2026 04:13:50  ip=102.64.217.33  GET statut=200  lignes=18535  "' UNION SELECT npi, nom, date_naissance FROM candidats --"
-  20/11/2026 04:14:16  ip=102.64.217.33  GET statut=200  lignes=18535  "' UNION SELECT npi, nom, date_naissance FROM candidats --"
-Lignes renvoyées au-delà de la limite de 50 : 18535 (requête UNION sur candidats : NPI, nom, date de naissance).
+  20/11/2026 04:12:40  ip=102.64.217.33  statut=200  lignes=390  nom='KPADONOU'
+  20/11/2026 04:13:05  ip=102.64.217.33  statut=500  lignes=-  nom="'"
+  20/11/2026 04:13:27  ip=102.64.217.33  statut=200  lignes=50  nom="' OR '1'='1"
+  20/11/2026 04:13:50  ip=102.64.217.33  statut=200  lignes=18535  nom="' UNION SELECT npi, nom, date_naissance FROM candidats --"
+  20/11/2026 04:14:16  ip=102.64.217.33  statut=200  lignes=18535  nom="' UNION SELECT npi, nom, date_naissance FROM candidats --"

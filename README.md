@@ -33,8 +33,7 @@ SQLite inclus). Toutes les commandes se lancent depuis la racine du dépôt.
 ## 1. Analyser le journal
 
 ```bash
-python analyse/analyse_journal.py donnees/journal_production.log          # rapport texte
-python analyse/analyse_journal.py donnees/journal_production.log --json   # sortie JSON
+python analyse/analyse_journal.py donnees/journal_production.log
 ```
 
 Points de méthode :

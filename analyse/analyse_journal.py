@@ -1,383 +1,359 @@
-#!/usr/bin/env python3
-"""Analyse du journal de production de la plateforme d'inscription aux concours.
+"""Analyse du journal de production de la plateforme d'inscription.
 
 Usage :
-    python analyse/analyse_journal.py <chemin_du_journal> [--json]
+    python analyse/analyse_journal.py <chemin_du_journal>
 
-Bibliothèque standard uniquement (Python 3.8+). Le journal est en UTC ; tous les
-résultats sont affichés en heure du Bénin (UTC+1, sans heure d'été).
+Le journal est en UTC ; tous les résultats sont affichés en heure du Bénin (UTC+1).
+Rappel du format : une ligne est écrite à la FIN d'une requête, avec sa durée.
+L'heure de début d'une requête vaut donc « heure de la ligne - durée ».
 """
-import argparse
-import json
+import io
 import re
 import sys
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
-from statistics import mean
 from urllib.parse import unquote_plus
 
-BENIN = timezone(timedelta(hours=1), "Bénin")
-SEUIL_IDENTITE_MS = 5000
+HEURE_DU_BENIN = timezone(timedelta(hours=1))
+SEUIL_LENTEUR_MS = 5000
 AGE_MAX = 35
 
-# Référentiel des concours (source : base_inscriptions.sql, table concours).
-# La clôture est stockée en UTC : 22:59 UTC = 23:59 heure du Bénin.
-CONCOURS = {
-    "DOUANES": {"date_epreuve": date(2026, 12, 12), "cloture_utc": datetime(2026, 11, 30, 22, 59, tzinfo=timezone.utc)},
-    "IMPOTS": {"date_epreuve": date(2026, 12, 12), "cloture_utc": datetime(2026, 11, 30, 22, 59, tzinfo=timezone.utc)},
-    "TRESOR": {"date_epreuve": date(2026, 12, 19), "cloture_utc": datetime(2026, 11, 20, 22, 59, tzinfo=timezone.utc)},
+# Référentiel des concours, recopié de la table `concours` de l'export.
+# La clôture est en UTC : 22:59 UTC = 23:59 heure du Bénin.
+DATE_EPREUVE = {
+    "DOUANES": date(2026, 12, 12),
+    "IMPOTS": date(2026, 12, 12),
+    "TRESOR": date(2026, 12, 19),
+}
+CLOTURE_UTC = {
+    "DOUANES": datetime(2026, 11, 30, 22, 59, tzinfo=timezone.utc),
+    "IMPOTS": datetime(2026, 11, 30, 22, 59, tzinfo=timezone.utc),
+    "TRESOR": datetime(2026, 11, 20, 22, 59, tzinfo=timezone.utc),
 }
 
-RE_LIGNE = re.compile(r"^(?P<ts>\S+)\s+(?P<niveau>INFO|WARN|ERROR)\s+\[req:(?P<req>[0-9a-f]+)\]\s+(?P<reste>.*)$")
-RE_IDENTITE = re.compile(r"^appel identite GET /identite/(?P<npi>\S+) -> (?P<statut>\d+) \((?P<ms>\d+) ms\)$")
-RE_REQUETE = re.compile(
-    r"^(?P<ip>\S+) (?P<methode>[A-Z]+) (?P<chemin>\S+) -> (?P<statut>\d+) \((?P<ms>\d+) ms\)(?: (?P<extra>.*))?$"
-)
-RE_ERREUR = re.compile(r'erreur="(?P<msg>.*)"$')
-RE_CLE_VALEUR = re.compile(r'(\w+)=("[^"]*"|\S+)')
-RE_LISTE = re.compile(r"^/api/centres/(?P<centre>[^/]+)/inscrits\?concours=(?P<concours>\w+)")
-RE_SQL_SUSPECT = re.compile(r"'|--|;|\b(union|select|or|and|drop|insert|update|delete|sleep)\b", re.I)
+
+# ---------------------------------------------------------------------------
+# Lecture du journal
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Requete:
+    """Une requête reçue par l'API (ligne « <ip> <méthode> <chemin> -> <statut> »)."""
+    fin: datetime
+    id: str
+    ip: str
+    methode: str
+    chemin: str
+    statut: int
+    duree_ms: int
+    champs: dict = field(default_factory=dict)  # concours=…, npi=…, numero=…, erreur=…
+
+    @property
+    def debut(self):
+        return self.fin - timedelta(milliseconds=self.duree_ms)
+
+    @property
+    def est_inscription(self):
+        return self.methode == "POST" and self.chemin == "/api/inscriptions"
+
+    @property
+    def acceptee(self):
+        return self.statut == 201
+
+    @property
+    def erreur(self):
+        return self.champs.get("erreur", "")
 
 
-def heure_benin(instant):
-    return instant.astimezone(BENIN).strftime("%d/%m/%Y %H:%M:%S")
+@dataclass
+class AppelIdentite:
+    """Un appel au service d'identification (ligne « appel identite GET /identite/<npi> »)."""
+    fin: datetime
+    id_requete: str
+    npi: str
+    statut: int
+    duree_ms: int
+
+    @property
+    def debut(self):
+        return self.fin - timedelta(milliseconds=self.duree_ms)
 
 
-def parse_instant(texte):
-    return datetime.fromisoformat(texte.replace("Z", "+00:00"))
+ENTETE = re.compile(r"^(\S+)\s+(?:INFO|WARN|ERROR)\s+\[req:([0-9a-f]+)\]\s+(.*)$")
+APPEL_IDENTITE = re.compile(r"^appel identite GET /identite/(\S+) -> (\d+) \((\d+) ms\)$")
+REQUETE = re.compile(r"^(\S+) ([A-Z]+) (\S+) -> (\d+) \((\d+) ms\) ?(.*)$")
+ERREUR = re.compile(r'erreur="(.*)"$')
+CLE_VALEUR = re.compile(r"(\w+)=(\S+)")
 
 
-def parse_extra(extra):
-    """Paires cle=valeur en fin de ligne ; 'erreur' est toujours en dernier et peut contenir des guillemets."""
+def lire_champs(texte):
+    """Lit les paires « cle=valeur » de fin de ligne.
+
+    Le champ erreur est toujours le dernier ; on le traite à part car son
+    message peut contenir des espaces et des guillemets.
+    """
     champs = {}
-    if not extra:
-        return champs
-    m = RE_ERREUR.search(extra)
-    if m:
-        champs["erreur"] = m.group("msg")
-        extra = extra[: m.start()]
-    for cle, valeur in RE_CLE_VALEUR.findall(extra):
-        champs[cle] = valeur.strip('"')
+    erreur = ERREUR.search(texte)
+    if erreur:
+        champs["erreur"] = erreur.group(1)
+        texte = texte[:erreur.start()]
+    for cle, valeur in CLE_VALEUR.findall(texte):
+        champs[cle] = valeur
     return champs
 
 
 def lire_journal(chemin):
-    """Retourne (requetes, appels_identite, lignes_ignorees)."""
-    requetes, appels, ignorees = [], [], []
-    with open(chemin, encoding="utf-8") as f:
-        for num, ligne in enumerate(f, 1):
-            ligne = ligne.rstrip("\r\n")
-            if not ligne.strip():
+    """Retourne (requêtes, appels au service d'identification, numéros des lignes non reconnues)."""
+    requetes = []
+    appels = []
+    non_reconnues = []
+
+    with open(chemin, encoding="utf-8") as fichier:
+        for numero_ligne, ligne in enumerate(fichier, start=1):
+            entete = ENTETE.match(ligne.strip())
+            if not entete:
+                non_reconnues.append(numero_ligne)
                 continue
-            m = RE_LIGNE.match(ligne)
-            if not m:
-                ignorees.append(num)
+            horodatage, id_requete, message = entete.groups()
+            fin = datetime.fromisoformat(horodatage.replace("Z", "+00:00"))
+
+            appel = APPEL_IDENTITE.match(message)
+            if appel:
+                npi, statut, duree = appel.groups()
+                appels.append(AppelIdentite(fin, id_requete, npi, int(statut), int(duree)))
                 continue
-            fin = parse_instant(m.group("ts"))
-            reste = m.group("reste")
-            mi = RE_IDENTITE.match(reste)
-            if mi:
-                ms = int(mi.group("ms"))
-                appels.append({
-                    "ligne": num, "req": m.group("req"), "niveau": m.group("niveau"),
-                    "npi": mi.group("npi"), "statut": int(mi.group("statut")), "ms": ms,
-                    "fin": fin, "debut": fin - timedelta(milliseconds=ms),
-                })
+
+            requete = REQUETE.match(message)
+            if requete:
+                ip, methode, chemin_url, statut, duree, reste = requete.groups()
+                requetes.append(Requete(fin, id_requete, ip, methode, chemin_url, int(statut), int(duree),
+                                        lire_champs(reste)))
                 continue
-            mr = RE_REQUETE.match(reste)
-            if mr:
-                ms = int(mr.group("ms"))
-                requetes.append({
-                    "ligne": num, "req": m.group("req"), "niveau": m.group("niveau"),
-                    "ip": mr.group("ip"), "methode": mr.group("methode"), "chemin": mr.group("chemin"),
-                    "statut": int(mr.group("statut")), "ms": ms,
-                    "fin": fin, "debut": fin - timedelta(milliseconds=ms),
-                    **parse_extra(mr.group("extra")),
-                })
-                continue
-            ignorees.append(num)
-    return requetes, appels, ignorees
+
+            non_reconnues.append(numero_ligne)
+
+    return requetes, appels, non_reconnues
 
 
 def inscriptions(requetes):
-    return [r for r in requetes if r["methode"] == "POST" and r["chemin"] == "/api/inscriptions"]
+    return [r for r in requetes if r.est_inscription]
 
 
-# 1. Numéros de table attribués plusieurs fois (INC-201)
+def inscriptions_acceptees(requetes):
+    return [r for r in requetes if r.est_inscription and r.acceptee]
+
+
+# ---------------------------------------------------------------------------
+# Les questions du sujet
+# ---------------------------------------------------------------------------
+
 def numeros_en_double(requetes):
+    """Numéros de table attribués plusieurs fois (INC-201) : {numéro: [inscriptions]}."""
     par_numero = defaultdict(list)
-    for r in inscriptions(requetes):
-        if r["statut"] == 201 and "numero" in r:
-            par_numero[r["numero"]].append(r)
-    return {n: lst for n, lst in sorted(par_numero.items()) if len(lst) > 1}
+    for r in inscriptions_acceptees(requetes):
+        par_numero[r.champs["numero"]].append(r)
+    return {numero: liste for numero, liste in sorted(par_numero.items()) if len(liste) > 1}
 
 
-# 2. Inscriptions en double : même NPI inscrit plusieurs fois au même concours (INC-203)
 def inscriptions_en_double(requetes):
-    par_cle = defaultdict(list)
-    for r in inscriptions(requetes):
-        if r["statut"] == 201:
-            par_cle[(r["npi"], r["concours"])].append(r)
-    return {k: sorted(lst, key=lambda r: r["debut"]) for k, lst in sorted(par_cle.items()) if len(lst) > 1}
+    """Même NPI inscrit plusieurs fois au même concours (INC-203) : {(npi, concours): [inscriptions]}."""
+    par_candidat = defaultdict(list)
+    for r in inscriptions_acceptees(requetes):
+        par_candidat[(r.champs["npi"], r.champs["concours"])].append(r)
+    return {cle: sorted(liste, key=lambda r: r.debut)
+            for cle, liste in sorted(par_candidat.items()) if len(liste) > 1}
 
 
-# 2 bis. Même NPI inscrit à deux concours du même jour (règle également violée par la concurrence)
-def inscriptions_meme_jour(requetes):
-    par_cle = defaultdict(dict)
-    for r in inscriptions(requetes):
-        if r["statut"] == 201 and r.get("concours") in CONCOURS:
-            jour = CONCOURS[r["concours"]]["date_epreuve"]
-            par_cle[(r["npi"], jour)].setdefault(r["concours"], r)
-    return {k: v for k, v in sorted(par_cle.items()) if len(v) > 1}
+@dataclass
+class PeriodeLente:
+    debut: datetime
+    fin: datetime
+    appels_lents: list
+    requetes_touchees: list
 
 
-# 3. Lenteur du service d'identification (INC-206)
 def periode_identite_lente(appels, requetes):
-    lents = [a for a in appels if a["ms"] >= SEUIL_IDENTITE_MS]
-    if not lents:
+    """Période où le service d'identification a mis 5 s ou plus (INC-206), ou None.
+
+    La période va du DÉBUT du premier appel lent à la FIN du dernier.
+    """
+    appels_lents = [a for a in appels if a.duree_ms >= SEUIL_LENTEUR_MS]
+    if not appels_lents:
         return None
-    par_req = {r["req"]: r for r in requetes}
-    touchees = {a["req"] for a in lents}
-    debut = min(a["debut"] for a in lents)
-    fin = max(a["fin"] for a in lents)
-    par_type = defaultdict(int)
-    for req in touchees:
-        r = par_req.get(req)
-        par_type[type_requete(r) if r else "inconnu"] += 1
-    # Requêtes bloquées pendant la période (toutes routes) : en cours pendant la fenêtre et >= 5 s
-    bloquees = [r for r in requetes if r["ms"] >= SEUIL_IDENTITE_MS and r["debut"] < fin and r["fin"] > debut]
-    return {
-        "debut": debut, "fin": fin, "duree": fin - debut,
-        "nb_appels_lents": len(lents), "nb_requetes_touchees": len(touchees),
-        "par_type": dict(par_type), "ms_max": max(a["ms"] for a in lents),
-        "ms_moyen": round(mean(a["ms"] for a in lents)),
-        "nb_requetes_5s_toutes_routes": len(bloquees),
-        "inscriptions_pendant": [r for r in inscriptions(requetes) if r["req"] in touchees and r["statut"] == 201],
-    }
+    ids_touches = {a.id_requete for a in appels_lents}
+    return PeriodeLente(
+        debut=min(a.debut for a in appels_lents),
+        fin=max(a.fin for a in appels_lents),
+        appels_lents=appels_lents,
+        requetes_touchees=[r for r in requetes if r.id in ids_touches],
+    )
 
 
-def type_requete(r):
-    if r["methode"] == "POST" and r["chemin"] == "/api/inscriptions":
-        return "POST /api/inscriptions"
-    if r["chemin"].endswith("/convocation"):
-        return "GET /api/inscriptions/{id}/convocation"
-    if RE_LISTE.match(r["chemin"]):
-        return "GET /api/centres/{code}/inscrits"
-    return f"{r['methode']} {r['chemin'].split('?')[0]}"
-
-
-# 4. Refus à tort pour clôture (INC-204) : refus « closes » alors que la clôture réelle n'est pas passée
 def refus_cloture_a_tort(requetes):
-    resultat = defaultdict(list)
-    for r in inscriptions(requetes):
-        if "Inscriptions closes" not in r.get("erreur", ""):
-            continue
-        c = CONCOURS.get(r.get("concours"))
-        if c and r["debut"] <= c["cloture_utc"]:
-            resultat[r["concours"]].append(r)
-    return dict(resultat)
-
-
-def refus_cloture_legitimes(requetes):
+    """Refus « Inscriptions closes » alors que la clôture réelle n'était pas passée (INC-204)."""
     return [r for r in inscriptions(requetes)
-            if "Inscriptions closes" in r.get("erreur", "")
-            and r["debut"] > CONCOURS[r["concours"]]["cloture_utc"]]
+            if "Inscriptions closes" in r.erreur
+            and r.debut <= CLOTURE_UTC[r.champs["concours"]]]
 
 
-# 5. Refus à tort pour l'âge (INC-205) : âge en années révolues au 31/12 de l'année du concours
 def age_au_31_decembre(naissance, annee):
-    # Au 31 décembre, l'anniversaire de l'année est toujours passé : âge = différence des années.
+    # Au 31 décembre, l'anniversaire de l'année est passé : l'âge est la différence des années.
     return annee - naissance.year
 
 
 def refus_age_a_tort(requetes):
-    resultat = []
-    toutes = inscriptions(requetes)
-    for r in toutes:
-        if "Âge limite" not in r.get("erreur", "") or "naissance" not in r:
+    """Refus « Âge limite » de candidats qui ont au plus 35 ans au 31/12 (INC-205)."""
+    refus = []
+    for r in inscriptions(requetes):
+        if "Âge limite" not in r.erreur:
             continue
-        naissance = date.fromisoformat(r["naissance"])
-        annee = CONCOURS[r["concours"]]["date_epreuve"].year
-        age = age_au_31_decembre(naissance, annee)
-        if age <= AGE_MAX:
-            fin_dec = date(annee, 12, 31)
-            calcul_bug = (fin_dec - naissance).days / 365
-            inscrit_ensuite = any(x["statut"] == 201 and x["npi"] == r["npi"] and x["concours"] == r["concours"]
-                                  and x["fin"] > r["fin"] for x in toutes)
-            resultat.append({**r, "age": age, "calcul_bug": calcul_bug, "inscrit_ensuite": inscrit_ensuite})
-    return resultat
+        naissance = date.fromisoformat(r.champs["naissance"])
+        annee_concours = DATE_EPREUVE[r.champs["concours"]].year
+        if age_au_31_decembre(naissance, annee_concours) <= AGE_MAX:
+            refus.append(r)
+    return refus
 
 
-# 6. Liste des inscrits par centre (INC-207)
-def stats_liste_inscrits(requetes):
+@dataclass
+class DureeListe:
+    nb_appels: int
+    moyenne_ms: int
+    max_ms: int
+    max_lignes: int
+
+
+def durees_liste_inscrits(requetes):
+    """Durée moyenne et maximale de la liste des inscrits, par centre (INC-207)."""
     par_centre = defaultdict(list)
     for r in requetes:
-        m = RE_LISTE.match(r["chemin"]) if r["methode"] == "GET" else None
-        if m:
-            par_centre[m.group("centre")].append(r)
-    stats = {}
-    for centre, lst in sorted(par_centre.items()):
-        lignes = [int(r["lignes"]) for r in lst if "lignes" in r]
-        stats[centre] = {
-            "nb": len(lst), "moy_ms": round(mean(r["ms"] for r in lst)), "max_ms": max(r["ms"] for r in lst),
-            "max_lignes": max(lignes) if lignes else None,
-            "ms_par_ligne": round(sum(r["ms"] for r in lst) / sum(lignes), 1) if lignes and sum(lignes) else None,
-        }
-    return stats
+        route = re.match(r"^/api/centres/(\w)/inscrits", r.chemin)
+        if r.methode == "GET" and route:
+            par_centre[route.group(1)].append(r)
 
-
-# Bonus : recherches suspectes (injection SQL), puis toute l'activité des IP concernées
-def recherches_suspectes(requetes):
-    resultat = []
-    for r in requetes:
-        if not r["chemin"].startswith("/api/inscrits/recherche"):
-            continue
-        nom = unquote_plus(r["chemin"].split("nom=", 1)[1]) if "nom=" in r["chemin"] else ""
-        if RE_SQL_SUSPECT.search(nom) or r["statut"] >= 500:
-            resultat.append({**r, "nom_decode": nom})
+    resultat = {}
+    for centre, liste in sorted(par_centre.items()):
+        durees = [r.duree_ms for r in liste]
+        resultat[centre] = DureeListe(
+            nb_appels=len(liste),
+            moyenne_ms=round(sum(durees) / len(durees)),
+            max_ms=max(durees),
+            max_lignes=max(int(r.champs.get("lignes", 0)) for r in liste),
+        )
     return resultat
 
 
-def activite_ips(requetes, ips):
-    return [r for r in requetes if r["ip"] in ips]
+MOTIF_INJECTION_SQL = re.compile(r"'|--|;|\b(union|select|or|drop)\b", re.IGNORECASE)
 
 
-def fmt_ms(ms):
-    return f"{ms / 1000:.1f} s" if ms >= 1000 else f"{ms} ms"
+def recherches_suspectes(requetes):
+    """Bonus : recherches par nom qui contiennent du SQL ou ont provoqué une erreur 500."""
+    suspectes = []
+    for r in requetes:
+        if not r.chemin.startswith("/api/inscrits/recherche?nom="):
+            continue
+        nom = unquote_plus(r.chemin.split("nom=", 1)[1])
+        if MOTIF_INJECTION_SQL.search(nom) or r.statut >= 500:
+            suspectes.append(r)
+    return suspectes
 
 
-def rapport_texte(chemin, requetes, appels, ignorees):
-    out = []
-    p = out.append
-    titre = lambda t: (p(""), p("=" * 78), p(t), p("=" * 78))
+# ---------------------------------------------------------------------------
+# Affichage
+# ---------------------------------------------------------------------------
 
-    toutes = sorted(requetes + appels, key=lambda x: x["fin"])
-    p(f"Journal analysé : {chemin}")
-    p(f"Période couverte (heure du Bénin) : {heure_benin(toutes[0]['fin'])} -> {heure_benin(toutes[-1]['fin'])}")
-    p(f"Requêtes : {len(requetes)} ; appels au service d'identification : {len(appels)} ; lignes non reconnues : {len(ignorees)}")
-    ins = inscriptions(requetes)
-    p(f"POST /api/inscriptions : {len(ins)} dont {sum(r['statut'] == 201 for r in ins)} acceptées (201)")
+def en_heure_du_benin(instant):
+    return instant.astimezone(HEURE_DU_BENIN).strftime("%d/%m/%Y %H:%M:%S")
 
-    titre("1. Numéros de table attribués plusieurs fois (INC-201, INC-202)")
-    doubles = numeros_en_double(requetes)
-    nb_surnum = sum(len(v) - 1 for v in doubles.values())
-    p(f"{len(doubles)} numéros attribués plusieurs fois, soit {nb_surnum} attributions en trop.")
-    for numero, lst in doubles.items():
-        p(f"  {numero} x{len(lst)}")
-        for r in lst:
-            p(f"    {heure_benin(r['fin'])}  npi={r['npi']}  {r['concours']:<7}  durée {fmt_ms(r['ms'])}  [req:{r['req']}]")
 
-    titre("2. Inscriptions en double (même NPI, même concours) (INC-203)")
-    dbl = inscriptions_en_double(requetes)
-    p(f"{len(dbl)} candidats inscrits plusieurs fois au même concours, soit {sum(len(v) - 1 for v in dbl.values())} inscriptions en trop.")
-    for (npi, concours), lst in dbl.items():
-        ecart = (lst[1]["debut"] - lst[0]["debut"]).total_seconds()
-        p(f"  npi={npi} {concours} : {', '.join(r['numero'] for r in lst)}  (2e envoi {ecart:.0f} s après le 1er)")
-        for r in lst:
-            p(f"    {heure_benin(r['fin'])}  {r['numero']}  durée {fmt_ms(r['ms'])}  ip={r['ip']}  [req:{r['req']}]")
-    mj = inscriptions_meme_jour(requetes)
-    p(f"Inscrits à deux concours du même jour malgré la règle : {len(mj)}")
-    for (npi, jour), par_c in mj.items():
-        p(f"  npi={npi} épreuve du {jour:%d/%m/%Y} : " + ", ".join(f"{c} {r['numero']} ({heure_benin(r['fin'])})" for c, r in par_c.items()))
+def en_secondes(ms):
+    return f"{ms / 1000:.1f} s"
 
-    titre("3. Service d'identification >= 5 s (INC-206)")
-    per = periode_identite_lente(appels, requetes)
-    if per:
-        p(f"Période : du {heure_benin(per['debut'])} au {heure_benin(per['fin'])} (durée {str(per['duree']).split('.')[0]})")
-        p(f"Appels lents : {per['nb_appels_lents']} (moyenne {fmt_ms(per['ms_moyen'])}, max {fmt_ms(per['ms_max'])})")
-        p(f"Requêtes touchées : {per['nb_requetes_touchees']}")
-        for t, n in sorted(per["par_type"].items(), key=lambda x: -x[1]):
-            p(f"  {n:>4}  {t}")
-        p(f"Requêtes de 5 s ou plus toutes routes confondues dans la période : {per['nb_requetes_5s_toutes_routes']}")
-        p(f"Inscriptions enregistrées pendant la période : {len(per['inscriptions_pendant'])} "
-          f"(dont numéros en double : {sum(1 for r in per['inscriptions_pendant'] if r['numero'] in doubles)})")
+
+def titre(texte):
+    print()
+    print("=" * 78)
+    print(texte)
+    print("=" * 78)
+
+
+def afficher_rapport(chemin, requetes, appels, non_reconnues):
+    print(f"Journal : {chemin}")
+    print(f"{len(requetes)} requêtes, {len(appels)} appels au service d'identification, "
+          f"{len(non_reconnues)} lignes non reconnues")
+    print("Toutes les heures sont en heure du Bénin (UTC+1).")
+
+    titre("1. Numéros de table attribués plusieurs fois (INC-201)")
+    doublons = numeros_en_double(requetes)
+    attributions_en_trop = sum(len(liste) - 1 for liste in doublons.values())
+    print(f"{len(doublons)} numéros, {attributions_en_trop} attributions en trop.")
+    for numero, liste in doublons.items():
+        print(f"  {numero} attribué {len(liste)} fois :")
+        for r in liste:
+            print(f"    {en_heure_du_benin(r.fin)}  npi={r.champs['npi']}  {r.champs['concours']}  "
+                  f"durée {en_secondes(r.duree_ms)}  [req:{r.id}]")
+
+    titre("2. Inscriptions en double (INC-203)")
+    doubles = inscriptions_en_double(requetes)
+    print(f"{len(doubles)} candidats inscrits deux fois au même concours.")
+    for (npi, concours), liste in doubles.items():
+        ecart = (liste[1].debut - liste[0].debut).total_seconds()
+        print(f"  npi={npi}  {concours}  {liste[0].champs['numero']}  "
+              f"1er envoi {en_heure_du_benin(liste[0].debut)}, 2e envoi {ecart:.0f} s après  ip={liste[0].ip}")
+
+    titre("3. Service d'identification à 5 s ou plus (INC-206)")
+    periode = periode_identite_lente(appels, requetes)
+    if periode is None:
+        print("Aucun appel lent.")
     else:
-        p("Aucun appel lent.")
+        durees = [a.duree_ms for a in periode.appels_lents]
+        print(f"Du {en_heure_du_benin(periode.debut)} au {en_heure_du_benin(periode.fin)}")
+        print(f"Requêtes touchées : {len(periode.requetes_touchees)}")
+        print(f"  dont inscriptions : {sum(1 for r in periode.requetes_touchees if r.est_inscription)}")
+        print(f"  dont convocations : {sum(1 for r in periode.requetes_touchees if r.chemin.endswith('/convocation'))}")
+        print(f"Durée des appels lents : moyenne {en_secondes(sum(durees) / len(durees))}, "
+              f"max {en_secondes(max(durees))}")
 
-    titre("4. Refus à tort pour clôture (INC-204)")
-    rc = refus_cloture_a_tort(requetes)
-    for concours, lst in rc.items():
-        c = CONCOURS[concours]
-        p(f"{concours} (clôture réelle {heure_benin(c['cloture_utc'])}) : {len(lst)} refus à tort, "
-          f"{len({r['npi'] for r in lst})} candidats distincts")
-        p(f"  premier : {heure_benin(min(r['debut'] for r in lst))}, dernier : {heure_benin(max(r['debut'] for r in lst))}")
-        npis = {r["npi"] for r in lst}
-        deja = {npi for npi in npis
-                if any(x["statut"] == 201 and x["npi"] == npi and x["concours"] == concours for x in ins)}
-        p(f"  dont {len(deja)} candidats déjà inscrits plus tôt (simple nouvel envoi, sans préjudice)")
-        p(f"  => {len(npis - deja)} candidats privés d'inscription "
-          f"({sum(1 for r in lst if r['npi'] not in deja)} refus)")
-    if not rc:
-        p("Aucun refus à tort.")
-    p(f"Refus « clos » légitimes (après la clôture réelle) : {len(refus_cloture_legitimes(requetes))}")
+    titre("4. Refus à tort le soir de la clôture du Trésor (INC-204)")
+    refus = [r for r in refus_cloture_a_tort(requetes) if r.champs["concours"] == "TRESOR"]
+    print(f"{len(refus)} refus à tort, pour {len({r.champs['npi'] for r in refus})} candidats.")
+    if refus:
+        print(f"Du {en_heure_du_benin(min(r.debut for r in refus))} au {en_heure_du_benin(max(r.debut for r in refus))}"
+              f" (clôture réelle : {en_heure_du_benin(CLOTURE_UTC['TRESOR'])})")
+    deja_inscrits = {r.champs["npi"] for r in inscriptions_acceptees(requetes) if r.champs["concours"] == "TRESOR"}
+    prives = {r.champs["npi"] for r in refus} - deja_inscrits
+    print(f"Candidats privés d'inscription (hors ceux déjà inscrits plus tôt) : {len(prives)}")
 
-    titre("5. Refus à tort pour l'âge (INC-205)")
-    ra = refus_age_a_tort(requetes)
-    p(f"{len(ra)} refus à tort, {len({r['npi'] for r in ra})} candidats distincts "
-      f"(âge réel <= {AGE_MAX} ans au 31/12, mais jours/365 > {AGE_MAX}).")
-    for r in sorted(ra, key=lambda r: r["fin"]):
-        p(f"  {heure_benin(r['fin'])}  npi={r['npi']}  né le {date.fromisoformat(r['naissance']):%d/%m/%Y}  {r['concours']:<7} "
-          f"âge {r['age']} ans (calcul bugué {r['calcul_bug']:.3f})  inscrit ensuite : {'oui' if r['inscrit_ensuite'] else 'non'}")
+    titre("5. Candidats refusés à tort pour l'âge (INC-205)")
+    refus_age = refus_age_a_tort(requetes)
+    print(f"{len(refus_age)} candidats (35 ans au plus au 31/12, refusés par le calcul jours / 365).")
+    for r in refus_age:
+        print(f"  {en_heure_du_benin(r.fin)}  npi={r.champs['npi']}  né le {r.champs['naissance']}  "
+              f"{r.champs['concours']}")
 
     titre("6. Liste des inscrits par centre (INC-207)")
-    p(f"{'Centre':<7}{'appels':>7}{'moyenne':>10}{'max':>10}{'max lignes':>12}{'ms/ligne':>10}")
-    for centre, s in stats_liste_inscrits(requetes).items():
-        p(f"{centre:<7}{s['nb']:>7}{fmt_ms(s['moy_ms']):>10}{fmt_ms(s['max_ms']):>10}{s['max_lignes'] or '-':>12}{s['ms_par_ligne'] or '-':>10}")
-    p("La durée croît avec le nombre de lignes : une requête par inscrit (N+1), sans index.")
+    print(f"{'Centre':<8}{'Appels':>8}{'Moyenne':>10}{'Maximum':>10}{'Lignes max':>12}")
+    for centre, d in durees_liste_inscrits(requetes).items():
+        print(f"{centre:<8}{d.nb_appels:>8}{en_secondes(d.moyenne_ms):>10}{en_secondes(d.max_ms):>10}"
+              f"{d.max_lignes:>12}")
 
-    titre("Bonus : recherches suspectes (/api/inscrits/recherche)")
-    rs = recherches_suspectes(requetes)
-    if not rs:
-        p("Rien de suspect.")
-    ips = sorted({r["ip"] for r in rs})
-    p(f"{len(rs)} requêtes suspectes depuis {', '.join(ips)}. Activité complète de ces IP :")
-    for r in activite_ips(requetes, set(ips)):
-        nom = unquote_plus(r["chemin"].split("nom=", 1)[1]) if "nom=" in r["chemin"] else r["chemin"]
-        p(f"  {heure_benin(r['fin'])}  ip={r['ip']}  {r['methode']} statut={r['statut']}  lignes={r.get('lignes', '-')}  {nom!r}")
-        if r.get("erreur"):
-            p(f"      erreur : {r['erreur']}")
-    exfil = [r for r in rs if int(r.get("lignes", 0) or 0) > 50]
-    if exfil:
-        p(f"Lignes renvoyées au-delà de la limite de 50 : {max(int(r['lignes']) for r in exfil)} "
-          f"(requête UNION sur candidats : NPI, nom, date de naissance).")
-    return "\n".join(out)
-
-
-def rapport_json(requetes, appels):
-    def ser(o):
-        if isinstance(o, datetime):
-            return o.astimezone(BENIN).isoformat()
-        if isinstance(o, (date, timedelta)):
-            return str(o)
-        raise TypeError(type(o))
-
-    per = periode_identite_lente(appels, requetes)
-    data = {
-        "numeros_en_double": {k: [r["npi"] for r in v] for k, v in numeros_en_double(requetes).items()},
-        "inscriptions_en_double": [{"npi": k[0], "concours": k[1], "numeros": [r["numero"] for r in v]}
-                                   for k, v in inscriptions_en_double(requetes).items()],
-        "identite_lente": per and {k: v for k, v in per.items() if k != "inscriptions_pendant"},
-        "refus_cloture_a_tort": {k: len(v) for k, v in refus_cloture_a_tort(requetes).items()},
-        "refus_age_a_tort": [{"npi": r["npi"], "naissance": r["naissance"], "concours": r["concours"]}
-                             for r in refus_age_a_tort(requetes)],
-        "liste_inscrits": stats_liste_inscrits(requetes),
-        "recherches_suspectes": [{"ip": r["ip"], "fin": r["fin"], "nom": r["nom_decode"], "lignes": r.get("lignes")}
-                                 for r in recherches_suspectes(requetes)],
-    }
-    return json.dumps(data, default=ser, ensure_ascii=False, indent=2)
+    titre("Bonus : recherches suspectes")
+    suspectes = recherches_suspectes(requetes)
+    ips = {r.ip for r in suspectes}
+    for r in requetes:
+        if r.ip in ips:
+            nom = unquote_plus(r.chemin.split("nom=", 1)[-1])
+            print(f"  {en_heure_du_benin(r.fin)}  ip={r.ip}  statut={r.statut}  "
+                  f"lignes={r.champs.get('lignes', '-')}  nom={nom!r}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("journal", help="chemin du journal de production")
-    parser.add_argument("--json", action="store_true", help="sortie JSON au lieu du rapport texte")
-    args = parser.parse_args()
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-    except AttributeError:
-        pass
-    requetes, appels, ignorees = lire_journal(args.journal)
-    print(rapport_json(requetes, appels) if args.json else rapport_texte(args.journal, requetes, appels, ignorees))
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding="utf-8")  # accents lisibles dans la console Windows
+    requetes, appels, non_reconnues = lire_journal(sys.argv[1])
+    afficher_rapport(sys.argv[1], requetes, appels, non_reconnues)
 
 
 if __name__ == "__main__":

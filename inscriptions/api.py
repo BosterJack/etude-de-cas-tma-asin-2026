@@ -61,8 +61,8 @@ def creer_serveur(chemin_db, identite, hote="127.0.0.1", port=0, horloge=None):
             concours = parse_qs(url.query).get("concours", [""])[0]
             self._repondre(200, service.lister_inscrits(chemin_db, m.group(1), concours))
 
-        def log_message(self, *args):
-            pass
+        def log_message(self, format, *args):
+            pass  # pas de trace par requête sur la sortie standard
 
     return ServeurHTTP((hote, port), Gestionnaire)
 
