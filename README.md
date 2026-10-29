@@ -96,7 +96,7 @@ BASE_TEST=postgres PG_URL=postgresql://tma:tma@localhost:5432/tests python -m un
 Attention : sur PostgreSQL, chaque test recrée les tables de la base indiquée. Il faut une
 base vide dédiée aux tests, et `max_connections` d'au moins 150 pour les tests de concurrence.
 
-39 tests, environ 40 s :
+39 tests, environ 1 minute (un peu plus sur PostgreSQL) :
 
 | Fichier | Ce qu'il vérifie |
 |---|---|
@@ -147,13 +147,23 @@ trop, 7 sont des doublons et seules 15 sont à renuméroter.
 
 ## 4. Lancer l'API corrigée (facultatif)
 
+L'API doit tourner sur une base qui contient les concours et les centres : on part de
+l'export réparé (`essai.db`, créé par la commande SQLite de la section 3).
+
 ```bash
-python -m inscriptions.api --db inscriptions.db --identite http://<service-identification> --port 8000
-python -m inscriptions.api --db postgresql://tma:tma@localhost:55432/inscriptions --identite http://<service-identification>
+python -m inscriptions.api --db essai.db --identite http://<service-identification> --port 8000
 ```
 
 Routes : `POST /api/inscriptions` (JSON : `npi`, `date_naissance`, `concours`, `centre`) et
 `GET /api/centres/{code}/inscrits?concours=…`.
+
+Exemple vérifié avec un service d'identification injoignable :
+`{"npi": "1234567890", "date_naissance": "1991-06-20", "concours": "DOUANES", "centre": "P"}`
+donne `201`, numéro `P-0615`, statut `en_attente_verification`.
+
+Sur PostgreSQL, la correction est validée par `docker compose run --rm tests-postgres`.
+L'export fourni ne déclare pas d'identifiants auto-incrémentés : en production, les tables
+ont leurs séquences, et `inscriptions/schema_postgres.sql` les déclare pour une base neuve.
 
 ## Architecture
 
