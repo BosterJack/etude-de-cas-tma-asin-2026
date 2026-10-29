@@ -19,3 +19,20 @@ Critères : **gravité** (données corrompues, candidats exclus à tort, blocage
 | 8 | INC-208 Inscription impossible à IMPOTS après DOUANES | — | — | **Comportement conforme** : les deux épreuves ont lieu le même jour (12/12) et la règle l'interdit. Pas d'anomalie : on répond au candidat. |
 
 Liens pressentis (à confirmer par l'analyse) : 201, 202 et 203 ont une cause commune (aucune transaction, aucun verrou, aucune contrainte d'unicité), et 206 l'aggrave en rallongeant le traitement. 204 et 205 sont des erreurs de règle métier, indépendantes des précédentes.
+
+---
+
+## Mise à jour après analyse
+
+Le classement ci-dessus est celui du premier commit, fait avant l'analyse détaillée. Il est conservé tel quel. L'analyse le confirme, avec un ajout :
+
+| Rang | Incident | Pourquoi |
+|---|---|---|
+| **0** | **Non signalé : injection SQL sur la recherche par nom** | Le 20/11 à 04:13, une IP externe a extrait NPI, nom et date de naissance des **18 535** candidats. C'est une violation de données personnelles, à traiter dans l'heure et à notifier. Voir [docs/incident-securite-recherche.md](docs/incident-securite-recherche.md). |
+| 1 à 4 | INC-206, 201, 202, 203 | Confirmés : **une seule cause** (appel d'identité sans délai, entre lecture et écriture, sans verrou ni contrainte). Un seul correctif, plus une reprise des données. |
+| 5 | INC-204 | 94 candidats privés d'inscription au Trésor. **Échéance ferme : le 30/11**, sinon DOUANES et IMPOTS fermeront aussi à 22 h 59. |
+| 6 | INC-205 | 36 candidats refusés à tort, à recontacter avant le 30/11. |
+| 7 | INC-207 | N+1 confirmé (18,5 ms par ligne). |
+| 8 | INC-208 | Conforme, aucune correction. |
+
+Détail des causes : [docs/causes-racines.md](docs/causes-racines.md).
