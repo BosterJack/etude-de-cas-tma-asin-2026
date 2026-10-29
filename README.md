@@ -79,6 +79,26 @@ Le script :
 Tout se fait dans une transaction. Les tables `reprise_*` gardent la trace de chaque
 changement et servent de liste des personnes à prévenir. On peut le relancer sans risque.
 
+Le script a été vérifié sur **PostgreSQL** (appliqué deux fois à l'export, mêmes résultats)
+et sur SQLite (`tests/test_reprise_donnees.py`). Il n'est pas compatible MySQL : MySQL ne
+connaît ni `CREATE INDEX IF NOT EXISTS` ni l'opérateur `||` de concaténation.
+
+On applique d'abord inscriptions en double (étape 1), puis numéros en double (étape 2),
+alors que le sujet les cite dans l'autre ordre. Supprimer d'abord les doublons évite
+d'attribuer un nouveau numéro à une ligne qui va disparaître : sur les 22 attributions en
+trop, 7 sont des doublons et seules 15 sont à renuméroter.
+
+### Qui prévenir
+
+| Qui | Pourquoi | Liste |
+|---|---|---|
+| Direction des concours | Valider la reprise ; décider pour Lokossa ; rouvrir ou non le Trésor pour les 94 candidats refusés à tort à la clôture, et recontacter les 36 refusés pour l'âge | `docs/decision-lokossa.md`, `analyse/resultats.txt` |
+| 15 candidats renumérotés | Nouveau numéro, nouvelle convocation | table `reprise_renumerotations` |
+| 7 candidats inscrits deux fois | Une seule convocation reste valable | table `reprise_inscriptions_supprimees` |
+| Chefs de centre de Cotonou, Parakou et Lokossa | Listes d'émargement mises à jour | les deux tables ci-dessus |
+| Support / centre d'appels | Réponse type aux candidats concernés | — |
+| Exploitation | Sauvegarde et arrêt des inscriptions pendant l'application du script | — |
+
 ## 4. Lancer l'API corrigée (facultatif)
 
 ```bash
