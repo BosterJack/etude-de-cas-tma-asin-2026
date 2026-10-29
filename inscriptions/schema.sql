@@ -1,5 +1,6 @@
--- Schéma de la correction (SQLite). Même structure que l'export, plus les
--- contraintes et index qui manquaient. Les instants (cloture, cree_le) sont en UTC.
+-- Schéma de la version corrigée (SQLite ; syntaxe compatible PostgreSQL).
+-- Même structure que l'export, plus les contraintes et index qui manquaient.
+-- Les instants (cloture, cree_le) sont en UTC.
 
 CREATE TABLE IF NOT EXISTS concours (
   id INTEGER PRIMARY KEY,
@@ -35,13 +36,11 @@ CREATE TABLE IF NOT EXISTS inscriptions (
   cree_le TIMESTAMP NOT NULL
 );
 
--- Filets de sécurité : même si le code se trompait, la base refuse les doublons.
--- Les inscriptions annulées (reprise des données) sortent des contraintes.
+-- Filets de sécurité : même si le code se trompait, la base refuse les doublons
+-- (mêmes index que ceux posés par sql/reprise_donnees.sql sur la base de production).
 CREATE UNIQUE INDEX IF NOT EXISTS ux_candidats_npi ON candidats (npi);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_inscriptions_numero
-  ON inscriptions (centre_id, numero_table) WHERE statut <> 'annulee';
-CREATE UNIQUE INDEX IF NOT EXISTS ux_inscriptions_npi_concours
-  ON inscriptions (npi, concours_id) WHERE statut <> 'annulee';
+CREATE UNIQUE INDEX IF NOT EXISTS ux_inscriptions_centre_numero ON inscriptions (centre_id, numero_table);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_inscriptions_npi_concours ON inscriptions (npi, concours_id);
 
 -- INC-207 : liste des inscrits d'un centre pour un concours.
 CREATE INDEX IF NOT EXISTS ix_inscriptions_centre_concours ON inscriptions (centre_id, concours_id);

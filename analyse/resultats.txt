@@ -1,4 +1,4 @@
-Journal analysé : journal_production.log
+Journal analysé : donnees/journal_production.log
 Période couverte (heure du Bénin) : 18/11/2026 01:00:14 -> 21/11/2026 07:59:21
 Requêtes : 8221 ; appels au service d'identification : 4556 ; lignes non reconnues : 0
 POST /api/inscriptions : 2464 dont 2007 acceptées (201)

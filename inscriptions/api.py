@@ -1,9 +1,9 @@
-"""API HTTP minimale autour de la correction (bibliothèque standard).
+"""API HTTP minimale autour du service (bibliothèque standard).
 
-    python correction/serveur.py --db inscriptions.db --identite http://localhost:9000 [--port 8000]
+    python -m inscriptions.api --db inscriptions.db --identite http://localhost:9000 [--port 8000]
 
 Routes :
-    POST /api/inscriptions                         {"npi", "date_naissance", "concours", "centre"}
+    POST /api/inscriptions                       corps JSON {npi, date_naissance, concours, centre}
     GET  /api/centres/{code}/inscrits?concours=…
 """
 import argparse
@@ -12,18 +12,20 @@ import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-import identite
-import inscription
+from . import client_identite, depot, service
+from .regles import Refus
 
-RE_LISTE = re.compile(r"^/api/centres/([^/]+)/inscrits$")
+RE_LISTE_INSCRITS = re.compile(r"^/api/centres/([^/]+)/inscrits$")
 
 
 class ServeurHTTP(ThreadingHTTPServer):
     daemon_threads = True
-    request_queue_size = 256  # 5 par défaut : les pics de connexions simultanées seraient rejetés
+    request_queue_size = 256  # 5 par défaut : un pic de connexions simultanées serait rejeté
 
 
-def creer_serveur(chemin_db, client_identite, hote="127.0.0.1", port=0, horloge=None):
+def creer_serveur(chemin_db, identite, hote="127.0.0.1", port=0, horloge=None):
+    """`horloge` : fonction qui renvoie l'instant courant (injectée pour les tests)."""
+
     class Gestionnaire(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -47,17 +49,17 @@ def creer_serveur(chemin_db, client_identite, hote="127.0.0.1", port=0, horloge=
                 return self._repondre(400, {"erreur": "Corps JSON invalide."})
             try:
                 maintenant = horloge() if horloge else None
-                self._repondre(201, inscription.inscrire(chemin_db, demande, client_identite, maintenant))
-            except inscription.Refus as r:
-                self._repondre(r.code_http, {"erreur": r.message})
+                self._repondre(201, service.inscrire(chemin_db, demande, identite, maintenant))
+            except Refus as refus:
+                self._repondre(refus.code_http, {"erreur": refus.message})
 
         def do_GET(self):
             url = urlparse(self.path)
-            m = RE_LISTE.match(url.path)
+            m = RE_LISTE_INSCRITS.match(url.path)
             if not m:
                 return self._repondre(404, {"erreur": "Route inconnue."})
             concours = parse_qs(url.query).get("concours", [""])[0]
-            self._repondre(200, inscription.lister_inscrits(chemin_db, m.group(1), concours))
+            self._repondre(200, service.lister_inscrits(chemin_db, m.group(1), concours))
 
         def log_message(self, *args):
             pass
@@ -67,13 +69,13 @@ def creer_serveur(chemin_db, client_identite, hote="127.0.0.1", port=0, horloge=
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--db", required=True)
+    parser.add_argument("--db", required=True, help="fichier SQLite (créé s'il n'existe pas)")
     parser.add_argument("--identite", required=True, help="URL de base du service d'identification")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
-    inscription.initialiser(args.db)
-    serveur = creer_serveur(args.db, identite.ClientIdentite(args.identite), port=args.port)
-    print(f"API sur http://127.0.0.1:{serveur.server_address[1]}")
+    depot.initialiser(args.db)
+    serveur = creer_serveur(args.db, client_identite.ClientIdentite(args.identite), port=args.port)
+    print(f"API à l'écoute sur http://127.0.0.1:{serveur.server_address[1]}")
     serveur.serve_forever()
 
 
